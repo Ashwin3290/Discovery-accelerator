@@ -198,7 +198,6 @@ def create_progress_chart(project_status):
 
 # Sidebar navigation
 with st.sidebar:
-    st.image("https://i.imgur.com/O0PYcTs.png", width=250)  # Replace with your actual logo
     st.write("#### Discovery Accelerator")
 
     selected = option_menu(
@@ -496,18 +495,18 @@ elif selected == "View Questions":
                                 
                                 if response and response.get("status") == "success":
                                     # Already made the API call above to generate questions directly
-                                    
+                                    st.rerun()
                                     # Display results from the API call
-                                    st.success(f"Question generation completed successfully! Generated {response.get('initial_questions_count', 0)} questions.")
+                                    # st.success(f"Question generation completed successfully! Generated {response.get('initial_questions_count', 0)} questions.")
                                     
-                                    # Display initial questions
-                                    if response.get('questions'):
-                                        st.subheader("Generated Questions")
-                                        questions_df = pd.DataFrame(response.get('questions'))
-                                        st.dataframe(questions_df)
+                                    # # Display initial questions
+                                    # if response.get('questions'):
+                                    #     st.subheader("Generated Questions")
+                                    #     questions_df = pd.DataFrame(response.get('questions'))
+                                    #     st.dataframe(questions_df)
                                         
-                                        # Reload the page to see questions (message only)
-                                        st.info("The questions have been generated. You'll see them in the list after refreshing.")
+                                    #     # Reload the page to see questions (message only)
+                                    #     st.info("The questions have been generated. You'll see them in the list after refreshing.")
                                 else:
                                     st.error("Failed to generate questions.")
                                     if response:
@@ -634,7 +633,7 @@ elif selected == "View Questions":
                                         
                                         card(
                                             title="Answer Details",
-                                            content=answer_card_content,
+                                            text=answer_card_content,
                                             image=None,
                                             styles={
                                                 "card": {
