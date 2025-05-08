@@ -34,7 +34,7 @@ class DiscoveryAccelerator:
         
         # Initialize other components
         self.sow_parser = SOWParser(gemini_api_key=gemini_api_key)
-        self.question_generator = QuestionGenerator(self.db, gemini_api_key=gemini_api_key)
+        self.question_generator = QuestionGenerator(self.db, chroma_path=chroma_path,gemini_api_key=gemini_api_key)
         self.transcript_analyzer = TranscriptAnalyzer(self.db, gemini_api_key=gemini_api_key)
     
     def process_documents(self, project_name: str, sow_path: str, additional_docs_paths: List[str] = None) -> Dict[str, Any]:
@@ -72,7 +72,7 @@ class DiscoveryAccelerator:
             
             # Process documents for vector search
             print(f"Step 3: Preparing documents for processing at {time.strftime('%Y-%m-%d %H:%M:%S')}...")
-            doc_paths = [sow_path]
+            doc_paths = []
             if additional_docs_paths:
                 print(f"Adding {len(additional_docs_paths)} additional documents to process")
                 doc_paths.extend(additional_docs_paths)
@@ -106,23 +106,9 @@ class DiscoveryAccelerator:
             
             # Process the project directory
             print(f"\nStep 6: Processing documents to create embeddings at {time.strftime('%Y-%m-%d %H:%M:%S')}...")
-            try:
-                self.pipeline.process_project(project_name, project_dir)
-                print(f"Document processing completed successfully at {time.strftime('%Y-%m-%d %H:%M:%S')}")
-            except Exception as process_error:
-                print(f"ERROR: Document processing failed: {str(process_error)}")
-                traceback.print_exc()
-                raise  # Fail fast as we need embeddings for further processing
-            
-            print(f"\n========================================\nDOCUMENT PROCESSING COMPLETED SUCCESSFULLY at {time.strftime('%Y-%m-%d %H:%M:%S')}\n========================================\n")
-            
-            return {
-                'status': 'success',
-                'project_id': project_id,
-                'project_name': project_name,
-                'sow_data': sow_data
-            }
-        
+            self.pipeline.process_project(project_name, project_dir,sow_data)
+            print(f"Document processing completed successfully at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+
         except Exception as e:
             print(f"\n========================================\nDOCUMENT PROCESSING FAILED at {time.strftime('%Y-%m-%d %H:%M:%S')}\n========================================")
             print(f"ERROR: {str(e)}")
@@ -167,11 +153,14 @@ class DiscoveryAccelerator:
             # Generate initial questions
             print(f"Generating initial questions at {time.strftime('%Y-%m-%d %H:%M:%S')}...")
             try:
-                initial_questions = self.question_generator.generate_initial_questions(sow_data)
+                initial_questions = self.question_generator.generate_initial_questions(sow_data,project_name)
                 print(f"Question generation completed with {len(initial_questions)} questions")
                 
                 print(f"Storing questions in database...")
-                question_ids = self.db.store_questions(initial_questions, project_id)
+                with open("questions.json", 'w') as file:
+                    json.dump(initial_questions, file, indent=4)
+                print(f"Questions stored in questions.json")
+                question_ids = self.db.store_questions(initial_questions["questions"], project_id)
                 print(f"Stored {len(question_ids)} questions in database")
             except Exception as question_error:
                 print(f"ERROR: Question generation failed: {str(question_error)}")
@@ -225,9 +214,11 @@ class DiscoveryAccelerator:
             return doc_result
         
         # Then generate questions
+        with open("SOW.txt", 'r') as file:
+            sow_file = file.read()
         question_result = self.generate_questions(
             project_id=doc_result['project_id'],
-            sow_data=doc_result['sow_data']
+            sow_data=doc_result['sow_data'],
         )
         
         return question_result

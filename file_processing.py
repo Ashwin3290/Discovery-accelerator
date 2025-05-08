@@ -14,7 +14,7 @@ import tempfile
 import gc
 import requests
 import base64
-from sentence_transformers import SentenceTransformer
+# from sentence_transformers import SentenceTransformer
 import chromadb
 from sklearn.cluster import KMeans
 import numpy as np
@@ -27,23 +27,31 @@ import xml.etree.ElementTree as ET
 import time
 import sqlite3
 import pandas as pd
-
+import os
+import tempfile
+from docx2pdf import convert as docx_convert
+from pptxtopdf import convert
+from comtypes import client
+import google.generativeai as genai
+from PIL import Image
+import io
+import gc
 
 # Set up Gemini API
 os.environ["GOOGLE_API_KEY"] = "AIzaSyAo-zfJCvUMxa91I5oC6r7AWSaWC6cn0cw"
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
-text_embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+# text_embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 def get_memory_usage():
     """Get current memory usage of the process"""
     process = psutil.Process(os.getpid())
     return process.memory_info().rss / 1024 / 1024  # in MB
 
 class ProjectDataPipeline:
-    def __init__(self, base_dir: str, inference_api_url: str, chroma_path: str = None):
+    def __init__(self, base_dir: str, inference_api_url: str, chroma_path: str = None, gemini_api_key: str = None):
         # Store the inference API URL
         self.inference_api_url = inference_api_url.rstrip('/')
-        
+        self.gemini_api_key = gemini_api_key
         # Use temporary directory if no chroma_path provided
         if chroma_path is None:
             chroma_path = tempfile.mkdtemp()
@@ -152,27 +160,27 @@ class ProjectDataPipeline:
                 print("Falling back to local model")
             
             # Fallback to local model
-            print("Using local model for text embedding")
-            embedding = text_embedding_model.encode(
-                text,
-                convert_to_numpy=True,
-                normalize_embeddings=True
-            )
-            print(f"Successfully generated embedding with shape {embedding.shape}")
-            return embedding
+            # print("Using local model for text embedding")
+            # embedding = text_embedding_model.encode(
+            #     text,
+            #     convert_to_numpy=True,
+            #     normalize_embeddings=True
+            # )
+            # print(f"Successfully generated embedding with shape {embedding.shape}")
+            # return embedding
         except Exception as e:
             self.logger.error(f"Error getting text embedding: {str(e)}")
             return np.zeros((384,), dtype=np.float32)
 
-    def decode_text_embedding(self,embedding: np.ndarray) -> str:
-        """Decode text embedding back to text using the text_embedding_model"""
-        try:
-            # Decode the embedding to text
-            decoded_text = text_embedding_model.decode(embedding)
-            return decoded_text
-        except Exception as e:
-            self.logger.error(f"Error decoding text embedding: {str(e)}")
-            return ""
+    # def decode_text_embedding(self,embedding: np.ndarray) -> str:
+    #     """Decode text embedding back to text using the text_embedding_model"""
+    #     try:
+    #         # Decode the embedding to text
+    #         decoded_text = text_embedding_model.decode(embedding)
+    #         return decoded_text
+    #     except Exception as e:
+    #         self.logger.error(f"Error decoding text embedding: {str(e)}")
+    #         return ""
         
     def create_embeddings(self, documents: List[Dict[str, Any]]) -> Dict[str, List]:
         """Create embeddings for text and images with memory management"""
@@ -311,127 +319,127 @@ class ProjectDataPipeline:
             self.logger.error(f"Error querying project {project_name}: {str(e)}")
             return []
 
-    def extract_text_from_pdf(self, pdf_path: str) -> List[Dict[str, Any]]:
-        """Extract text and images from PDF with memory management"""
-        documents = []
+    # def extract_text_from_pdf(self, pdf_path: str) -> List[Dict[str, Any]]:
+    #     """Extract text and images from PDF with memory management"""
+    #     documents = []
         
-        try:
-            doc = fitz.open(pdf_path)
-            total_pages = len(doc)
+    #     try:
+    #         doc = fitz.open(pdf_path)
+    #         total_pages = len(doc)
             
-            for page_num in range(total_pages):
-                self.clear_memory()
+    #         for page_num in range(total_pages):
+    #             self.clear_memory()
                 
-                page = doc[page_num]
+    #             page = doc[page_num]
                 
-                # Extract text
-                text = page.get_text()
-                if text.strip():
-                    documents.append({
-                        'content': text,
-                        'type': 'text',
-                        'source': f"{pdf_path}#page{page_num + 1}"
-                    })
+    #             # Extract text
+    #             text = page.get_text()
+    #             if text.strip():
+    #                 documents.append({
+    #                     'content': text,
+    #                     'type': 'text',
+    #                     'source': f"{pdf_path}#page{page_num + 1}"
+    #                 })
                 
-                # Process images for current page
-                page_images = []
-                page_sources = []
+    #             # Process images for current page
+    #             page_images = []
+    #             page_sources = []
                 
-                images = page.get_images()
-                for img_index, img in enumerate(images):
-                    try:
-                        xref = img[0]
-                        base_image = doc.extract_image(xref)
-                        if base_image:
-                            image_data = base_image["image"]
-                            image = Image.open(io.BytesIO(image_data))
+    #             images = page.get_images()
+    #             for img_index, img in enumerate(images):
+    #                 try:
+    #                     xref = img[0]
+    #                     base_image = doc.extract_image(xref)
+    #                     if base_image:
+    #                         image_data = base_image["image"]
+    #                         image = Image.open(io.BytesIO(image_data))
                             
-                            if image.size[0] >= 32 and image.size[1] >= 32:
-                                page_images.append(image)
-                                page_sources.append(f"{pdf_path}#page{page_num + 1}_img{img_index}")
-                    except Exception as e:
-                        self.logger.error(f"Error extracting image {img_index} from page {page_num + 1}: {str(e)}")
-                        continue
+    #                         if image.size[0] >= 32 and image.size[1] >= 32:
+    #                             page_images.append(image)
+    #                             page_sources.append(f"{pdf_path}#page{page_num + 1}_img{img_index}")
+    #                 except Exception as e:
+    #                     self.logger.error(f"Error extracting image {img_index} from page {page_num + 1}: {str(e)}")
+    #                     continue
                 
-                # Process images for current page
-                if page_images:
-                    image_documents = self.process_images_batch(page_images, page_sources)
-                    documents.extend(image_documents)
+    #             # Process images for current page
+    #             if page_images:
+    #                 image_documents = self.process_images_batch(page_images, page_sources)
+    #                 documents.extend(image_documents)
                     
-                    for img in page_images:
-                        del img
-                    del page_images
-                    self.clear_memory()
+    #                 for img in page_images:
+    #                     del img
+    #                 del page_images
+    #                 self.clear_memory()
                 
-                del page
-                self.clear_memory()
+    #             del page
+    #             self.clear_memory()
             
-            doc.close()
+    #         doc.close()
         
-        except Exception as e:
-            self.logger.error(f"Error processing PDF {pdf_path}: {str(e)}")
-        finally:
-            self.clear_memory()
+    #     except Exception as e:
+    #         self.logger.error(f"Error processing PDF {pdf_path}: {str(e)}")
+    #     finally:
+    #         self.clear_memory()
         
-        return documents
+    #     return documents
 
-    def extract_from_ppt(self, ppt_path: str) -> List[Dict[str, Any]]:
-        """Extract text and images from PowerPoint with memory management"""
-        documents = []
-        try:
-            presentation = Presentation(ppt_path)
+    # def extract_from_ppt(self, ppt_path: str) -> List[Dict[str, Any]]:
+    #     """Extract text and images from PowerPoint with memory management"""
+    #     documents = []
+    #     try:
+    #         presentation = Presentation(ppt_path)
             
-            for slide_num, slide in enumerate(presentation.slides):
-                self.clear_memory()
+    #         for slide_num, slide in enumerate(presentation.slides):
+    #             self.clear_memory()
                 
-                # Extract text
-                text = ""
-                for shape in slide.shapes:
-                    if hasattr(shape, "text"):
-                        text += shape.text + "\n"
+    #             # Extract text
+    #             text = ""
+    #             for shape in slide.shapes:
+    #                 if hasattr(shape, "text"):
+    #                     text += shape.text + "\n"
                 
-                if text.strip():
-                    documents.append({
-                        'content': text,
-                        'type': 'text',
-                        'source': f"{ppt_path}#slide{slide_num + 1}"
-                    })
+    #             if text.strip():
+    #                 documents.append({
+    #                     'content': text,
+    #                     'type': 'text',
+    #                     'source': f"{ppt_path}#slide{slide_num + 1}"
+    #                 })
                 
-                # Process images for current slide
-                slide_images = []
-                slide_sources = []
+    #             # Process images for current slide
+    #             slide_images = []
+    #             slide_sources = []
                 
-                for shape_num, shape in enumerate(slide.shapes):
-                    try:
-                        if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                            image = Image.open(io.BytesIO(shape.image.blob))
+    #             for shape_num, shape in enumerate(slide.shapes):
+    #                 try:
+    #                     if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+    #                         image = Image.open(io.BytesIO(shape.image.blob))
                             
-                            if image.size[0] >= 32 and image.size[1] >= 32:
-                                slide_images.append(image)
-                                slide_sources.append(f"{ppt_path}#slide{slide_num + 1}_img{shape_num}")
+    #                         if image.size[0] >= 32 and image.size[1] >= 32:
+    #                             slide_images.append(image)
+    #                             slide_sources.append(f"{ppt_path}#slide{slide_num + 1}_img{shape_num}")
                     
-                    except Exception as e:
-                        self.logger.error(f"Error extracting image {shape_num} from slide {slide_num + 1}: {str(e)}")
-                        continue
+    #                 except Exception as e:
+    #                     self.logger.error(f"Error extracting image {shape_num} from slide {slide_num + 1}: {str(e)}")
+    #                     continue
                 
-                # Process slide images
-                if slide_images:
-                    image_documents = self.process_images_batch(slide_images, slide_sources)
-                    documents.extend(image_documents)
+    #             # Process slide images
+    #             if slide_images:
+    #                 image_documents = self.process_images_batch(slide_images, slide_sources)
+    #                 documents.extend(image_documents)
                     
-                    for img in slide_images:
-                        del img
-                    del slide_images
-                    self.clear_memory()
+    #                 for img in slide_images:
+    #                     del img
+    #                 del slide_images
+    #                 self.clear_memory()
                 
-                self.clear_memory()
+    #             self.clear_memory()
         
-        except Exception as e:
-            self.logger.error(f"Error processing PPT {ppt_path}: {str(e)}")
-        finally:
-            self.clear_memory()
+    #     except Exception as e:
+    #         self.logger.error(f"Error processing PPT {ppt_path}: {str(e)}")
+    #     finally:
+    #         self.clear_memory()
         
-        return documents
+    #     return documents
 
     def process_images_batch(self, images: List[Image.Image], sources: List[str]) -> List[Dict]:
         """Process a batch of images with memory management"""
@@ -470,79 +478,79 @@ class ProjectDataPipeline:
         
         return documents
 
-    def extract_from_docx(self, docx_path: str) -> List[Dict[str, Any]]:
-        """Extract text and images from DOCX with memory management"""
-        documents = []
+    # def extract_from_docx(self, docx_path: str) -> List[Dict[str, Any]]:
+    #     """Extract text and images from DOCX with memory management"""
+    #     documents = []
         
-        try:
-            doc = docx.Document(docx_path)
+    #     try:
+    #         doc = docx.Document(docx_path)
             
-            # Extract text from paragraphs
-            all_paragraphs = []
-            for para in doc.paragraphs:
-                if para.text.strip():
-                    all_paragraphs.append(para.text)
+    #         # Extract text from paragraphs
+    #         all_paragraphs = []
+    #         for para in doc.paragraphs:
+    #             if para.text.strip():
+    #                 all_paragraphs.append(para.text)
             
-            # Combine paragraphs into chunks for better context
-            chunk_size = 3
-            for i in range(0, len(all_paragraphs), chunk_size):
-                chunk = all_paragraphs[i:i + chunk_size]
-                text = "\n".join(chunk)
-                if text.strip():
-                    documents.append({
-                        'content': text,
-                        'type': 'text',
-                        'source': f"{docx_path}#para{i}"
-                    })
+    #         # Combine paragraphs into chunks for better context
+    #         chunk_size = 3
+    #         for i in range(0, len(all_paragraphs), chunk_size):
+    #             chunk = all_paragraphs[i:i + chunk_size]
+    #             text = "\n".join(chunk)
+    #             if text.strip():
+    #                 documents.append({
+    #                     'content': text,
+    #                     'type': 'text',
+    #                     'source': f"{docx_path}#para{i}"
+    #                 })
             
-            # Extract tables
-            for table_idx, table in enumerate(doc.tables):
-                table_text = []
-                for row in table.rows:
-                    row_text = []
-                    for cell in row.cells:
-                        row_text.append(cell.text)
-                    table_text.append(" | ".join(row_text))
+    #         # Extract tables
+    #         for table_idx, table in enumerate(doc.tables):
+    #             table_text = []
+    #             for row in table.rows:
+    #                 row_text = []
+    #                 for cell in row.cells:
+    #                     row_text.append(cell.text)
+    #                 table_text.append(" | ".join(row_text))
                 
-                table_content = "\n".join(table_text)
-                if table_content.strip():
-                    documents.append({
-                        'content': table_content,
-                        'type': 'text',
-                        'source': f"{docx_path}#table{table_idx}"
-                    })
+    #             table_content = "\n".join(table_text)
+    #             if table_content.strip():
+    #                 documents.append({
+    #                     'content': table_content,
+    #                     'type': 'text',
+    #                     'source': f"{docx_path}#table{table_idx}"
+    #                 })
             
-            # Extract images
-            with zipfile.ZipFile(docx_path) as zf:
-                image_parts = []
-                for f in zf.namelist():
-                    if f.startswith('word/media/'):
-                        image_parts.append(f)
+    #         # Extract images
+    #         with zipfile.ZipFile(docx_path) as zf:
+    #             image_parts = []
+    #             for f in zf.namelist():
+    #                 if f.startswith('word/media/'):
+    #                     image_parts.append(f)
                 
-                for img_idx, img_part in enumerate(image_parts):
-                    try:
-                        image_content = zf.read(img_part)
-                        image = Image.open(io.BytesIO(image_content))
+    #             for img_idx, img_part in enumerate(image_parts):
+    #                 try:
+    #                     image_content = zf.read(img_part)
+    #                     image = Image.open(io.BytesIO(image_content))
                         
-                        if image.size[0] >= 32 and image.size[1] >= 32:
-                            embedding = self.process_image(image)
-                            documents.append({
-                                'content': embedding,
-                                'type': 'image',
-                                'source': f"{docx_path}#image{img_idx}"
-                            })
-                    except Exception as e:
-                        self.logger.error(f"Error extracting image {img_idx} from {docx_path}: {str(e)}")
-                        continue
+    #                     if image.size[0] >= 32 and image.size[1] >= 32:
+    #                         embedding = self.process_image(image)
+    #                         documents.append({
+    #                             'content': embedding,
+    #                             'type': 'image',
+    #                             'source': f"{docx_path}#image{img_idx}"
+    #                         })
+    #                 except Exception as e:
+    #                     self.logger.error(f"Error extracting image {img_idx} from {docx_path}: {str(e)}")
+    #                     continue
             
-            self.clear_memory()
+    #         self.clear_memory()
         
-        except Exception as e:
-            self.logger.error(f"Error processing DOCX {docx_path}: {str(e)}")
+    #     except Exception as e:
+    #         self.logger.error(f"Error processing DOCX {docx_path}: {str(e)}")
         
-        return documents
+    #     return documents
     
-    def process_project(self, project_name: str, project_dir: str):
+    def process_project(self, project_name: str, project_dir: str,sow_data):
         """Process all files in a project directory with memory management"""
         print(f"\n==== Processing project: {project_name} ====\nDirectory: {project_dir}")
         
@@ -554,7 +562,7 @@ class ProjectDataPipeline:
             print(f"ERROR creating ChromaDB collection: {str(e)}")
             raise
             
-        documents = []
+        documents = {}
         
         # Get list of files
         files = []
@@ -565,61 +573,30 @@ class ProjectDataPipeline:
                 
         print(f"Found {len(files)} files to process: {[os.path.basename(f) for f in files]}")
         
-        # Process files in chunks
-        chunk_size = 3
-        for i in range(0, len(files), chunk_size):
-            chunk_files = files[i:i + chunk_size]
-            chunk_documents = []
-            
-            print(f"\nProcessing chunk {i//chunk_size + 1}/{(len(files)-1)//chunk_size + 1} of files")
-            
-            for file_path in chunk_files:
-                try:
-                    print(f"\nProcessing file: {file_path}")
-                    self.logger.info(f"Processing file: {file_path}")
-                    self.logger.info(f"Current RAM usage: {get_memory_usage():.2f} MB")
-                    
-                    if file_path.lower().endswith('.pdf'):
-                        docs = self.extract_text_from_pdf(file_path)
-                        chunk_documents.extend(docs)
-                        self.logger.info(f"Extracted {len(docs)} documents from PDF")
-                    elif file_path.lower().endswith(('.ppt', '.pptx')):
-                        docs = self.extract_from_ppt(file_path)
-                        chunk_documents.extend(docs)
-                        self.logger.info(f"Extracted {len(docs)} documents from PPT")
-                    elif file_path.lower().endswith(('.docx', '.doc')):
-                        docs = self.extract_from_docx(file_path)
-                        chunk_documents.extend(docs)
-                        self.logger.info(f"Extracted {len(docs)} documents from DOCX")
-                    elif file_path.lower().endswith(('.jpg', '.jpeg', '.png')):
-                        image = Image.open(file_path)
-                        image_embedding = self.process_image(image)
-                        chunk_documents.append({
-                            'content': image_embedding,
-                            'type': 'image',
-                            'source': file_path
-                        })
-                        del image
-                        self.logger.info(f"Processed image file")
-                except Exception as e:
-                    self.logger.error(f"Error processing file {file_path}: {str(e)}")
-                finally:
-                    self.clear_memory()
-            
-            documents.extend(chunk_documents)
-            print(documents)
-            del chunk_documents
-            self.clear_memory()
-            
-            if len(documents) >= 50:
-                print(f"Processing batch of {len(documents)} documents")
-                self.process_documents_batch(documents, collection)
-                documents = []
+        for file_path in files:
+            try:
+                documents[file_path]=self.parse_file(file_path,sow_data)
+                self.logger.info(f"Processed image file")
+            except Exception as e:
+                self.logger.error(f"Error processing file {file_path}: {str(e)}")
+            finally:
                 self.clear_memory()
         
+        print(documents)
+        self.clear_memory()
+        import json
+        with open("documents.json", "w") as f:
+            json.dump(documents, f, indent=4)
+        
+        if len(documents) >= 50:
+            print(f"Processing batch of {len(documents)} documents")
+            # self.process_documents_batch(documents, collection)
+            documents = []
+            self.clear_memory()
+    
         if documents:
             print(f"Processing final batch of {len(documents)} documents")
-            self.process_documents_batch(documents, collection)
+            # self.process_documents_batch(documents, collection)
             self.clear_memory()
             
         print(f"\n==== Completed processing project: {project_name} ====\n")
@@ -723,65 +700,231 @@ class ProjectDataPipeline:
             self.logger.error(f"Error retrieving document content: {str(e)}")
             return "Error retrieving content"
 
-    # def list_projects(self) -> List[str]:
-    #     """List all available projects in the database"""
-    #     try:
-    #         print("Listing projects from ChromaDB...")
-    #         collections = self.chroma_client.list_collections()
-    #         print(f"ChromaDB returned {len(collections)} collections")
+    def parse_file(self,file_path,sow_data):
+        print(f"\nProcessing file: {file_path}")
+        try:
+            self.logger.info(f"Processing file: {file_path}")
+            self.logger.info(f"Current RAM usage: {get_memory_usage():.2f} MB")
             
-    #         # Log information about the returned collections
-    #         for i, collection in enumerate(collections):
-    #             print(f"Collection {i+1}: Type={type(collection)}, Value={collection}")
-    #             if hasattr(collection, 'name'):
-    #                 print(f"  Name attribute: {collection.name}")
-    #             elif hasattr(collection, '__dict__'):
-    #                 print(f"  Attributes: {collection.__dict__}")
+            # If file is not already a PDF, convert it
+            if file_path.lower().endswith(('.docx', '.doc', '.ppt', '.pptx')):
+                print(f"Converting {file_path} to PDF")
+                pdf_path = convert_to_pdf(file_path)
+                if pdf_path:
+                    print(f"Conversion successful: {pdf_path}")
+            else:
+                pdf_path = file_path if file_path.lower().endswith('.pdf') else None
+        
+            # Process based on file type
+            if pdf_path and pdf_path.lower().endswith('.pdf'):
+                try:
+                    gemini_extracted_info = extract_text_with_gemini(pdf_path, self.gemini_api_key,sow_data)
+                    
+                    # Add Gemini's extraction as a special document
+                    return gemini_extracted_info
+                except Exception as e:
+                    self.logger.error(f"Error processing with Gemini: {str(e)}")      
             
-    #         # Extract collection names - more robust implementation
-    #         collection_names = []
-    #         for collection in collections:
-    #             try:
-    #                 # Try different ways to get collection name
-    #                 if hasattr(collection, 'name'):
-    #                     # If it has a 'name' attribute, use that
-    #                     collection_names.append(collection.name)
-    #                 elif isinstance(collection, dict) and 'name' in collection:
-    #                     # If it's a dictionary with a 'name' key, use that
-    #                     collection_names.append(collection['name'])
-    #                 elif isinstance(collection, str):
-    #                     # If it's already a string, just use it
-    #                     collection_names.append(collection)
-    #                 else:
-    #                     # Try to convert to string as a last resort
-    #                     collection_str = str(collection)
-    #                     # If the string contains a name, extract it
-    #                     if 'name=' in collection_str:
-    #                         name_part = collection_str.split('name=')[1]
-    #                         # Extract the name part (handles formats like "name='xyz'" or "name=xyz")
-    #                         if "'" in name_part:
-    #                             name = name_part.split("'")[1]
-    #                         elif '"' in name_part:
-    #                             name = name_part.split('"')[1]
-    #                         else:
-    #                             name = name_part.split(',')[0].split(')')[0].strip()
-    #                         collection_names.append(name)
-    #                     else:
-    #                         # Just use the whole string
-    #                         collection_names.append(collection_str)
-    #             except Exception as collection_error:
-    #                 print(f"Error processing collection {i}: {str(collection_error)}")
-    #                 # Add a placeholder name in case of error
-    #                 collection_names.append(f"collection_{i}")
+        except Exception as e:
+            self.logger.error(f"Error processing file {file_path}: {str(e)}")
+        finally:
+            self.clear_memory()
+
+    def generate_document_clusters(self, project_name: str, eps: float = None, min_samples: int = None) -> Dict[str, Any]:
+        """Generate and store document clusters for a project
+        
+        Args:
+            project_name: Name of the project collection
+            eps: DBSCAN epsilon parameter (auto-calculated if None)
+            min_samples: DBSCAN min_samples parameter (auto-calculated if None)
             
-    #         print(f"Returning {len(collection_names)} project names: {collection_names}")
-    #         return collection_names
-    #     except Exception as e:
-    #         self.logger.error(f"Error listing projects: {str(e)}")
-    #         print(f"Error listing projects: {str(e)}")
-    #         import traceback
-    #         traceback.print_exc()
-    #         return []
+        Returns:
+            Dictionary with cluster information
+        """
+        print(f"\n==== Generating document clusters for '{project_name}' ====")
+        
+        try:
+            # Get the collection
+            collection = self.chroma_client.get_collection(project_name)
+            print(f"Successfully connected to collection '{project_name}'")
+            
+            # Retrieve document embeddings
+            results = collection.get(include=["embeddings", "metadatas", "documents"])
+            embeddings = results["embeddings"]
+            metadatas = results["metadatas"]
+            documents = results["documents"]
+            
+            print(f"Retrieved {len(embeddings)} document embeddings")
+            import numpy as np
+            # Convert to numpy array
+            embeddings_array = np.array(embeddings, dtype=np.float32)
+            
+            # Check if the array is empty
+            if embeddings_array.size == 0:
+                return {"error": "No embeddings found", "clusters": {}}
+            
+            # Auto-calculate DBSCAN parameters if not provided
+            if eps is None:
+                # Calculate pairwise distances and use the 90th percentile as eps
+                from sklearn.metrics import pairwise_distances
+                import numpy as np
+                
+                # Use a sample if there are many documents
+                max_sample = 1000
+                if len(embeddings_array) > max_sample:
+                    indices = np.random.choice(len(embeddings_array), max_sample, replace=False)
+                    sample = embeddings_array[indices]
+                else:
+                    sample = embeddings_array
+                
+                # Calculate pairwise distances
+                distances = pairwise_distances(sample, metric='cosine')
+                # Flatten the upper triangle
+                dist_list = distances[np.triu_indices_from(distances, k=1)]
+                # Use the 10th percentile as eps (smaller for tighter clusters)
+                eps = np.percentile(dist_list, 25)
+                print(f"Auto-calculated eps value: {eps}")
+            
+            if min_samples is None:
+                # Rule of thumb: min_samples = 2 * dimensions
+                min_samples = min(5, int(embeddings_array.shape[1] * 0.05))
+                print(f"Auto-calculated min_samples value: {min_samples}")
+            
+            # Perform DBSCAN clustering
+            print(f"Running DBSCAN with eps={eps}, min_samples={min_samples}...")
+            from sklearn.cluster import DBSCAN
+            
+            # Normalize embeddings
+            norms = np.linalg.norm(embeddings_array, axis=1, keepdims=True)
+            norms[norms == 0] = 1  # Avoid division by zero
+            normalized_embeddings = embeddings_array / norms
+            
+            dbscan = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
+            clusters = dbscan.fit_predict(normalized_embeddings)
+            
+            # Count clusters (excluding noise points labeled as -1)
+            unique_clusters = set(clusters)
+            n_clusters = len(unique_clusters) - (1 if -1 in unique_clusters else 0)
+            n_noise = list(clusters).count(-1)
+            
+            print(f"DBSCAN found {n_clusters} clusters, {n_noise} noise points")
+            
+            # Organize documents by cluster
+            cluster_data = {}
+            for cluster_id in unique_clusters:
+                if cluster_id == -1:
+                    cluster_name = "Outliers"
+                else:
+                    cluster_name = f"Cluster_{cluster_id}"
+                
+                # Get documents in this cluster
+                cluster_indices = np.where(clusters == cluster_id)[0]
+                
+                # Extract cluster documents and metadata
+                cluster_docs = []
+                for idx in cluster_indices:
+                    if idx < len(documents) and documents[idx]:
+                        doc_data = {
+                            'content': documents[idx],
+                            'source': metadatas[idx].get('source', ''),
+                            'type': metadatas[idx].get('type', '')
+                        }
+                        cluster_docs.append(doc_data)
+                
+                # Generate cluster summary
+                summary = self._summarize_cluster(cluster_docs)
+                
+                cluster_data[cluster_name] = {
+                    'document_count': len(cluster_docs),
+                    'documents': cluster_docs,
+                    'summary': summary
+                }
+            
+            # Update document metadata with cluster information
+            print("Updating document metadata with cluster information...")
+            # Batched updates to avoid memory issues
+            batch_size = 20
+            for i in range(0, len(clusters), batch_size):
+                batch_end = min(i + batch_size, len(clusters))
+                batch_ids = [f"doc_{j}" for j in range(i, batch_end)]
+                
+                # Get existing metadata
+                batch_metadatas = []
+                for j in range(i, batch_end):
+                    if j < len(metadatas):
+                        metadata = metadatas[j].copy()
+                        cluster_id = int(clusters[j])
+                        if cluster_id == -1:
+                            metadata['cluster'] = "Outliers"
+                        else:
+                            metadata['cluster'] = f"Cluster_{cluster_id}"
+                        batch_metadatas.append(metadata)
+                
+                # Update metadata in the collection
+                if batch_metadatas:
+                    collection.update(
+                        ids=batch_ids,
+                        metadatas=batch_metadatas
+                    )
+            
+            return {
+                "status": "success",
+                "clusters": cluster_data,
+                "parameters": {
+                    "eps": eps,
+                    "min_samples": min_samples
+                }
+            }
+        
+        except Exception as e:
+            print(f"Error generating document clusters: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {"error": str(e), "clusters": {}}
+        
+    def _summarize_cluster(self, cluster_docs: List[Dict[str, Any]]) -> str:
+        """Generate a summary for a document cluster"""
+        try:
+            # Extract text content
+            text_content = []
+            for doc in cluster_docs:
+                if doc.get('type') == 'text' and doc.get('content'):
+                    text_content.append(doc.get('content'))
+            
+            if not text_content:
+                return "No text content available for summarization"
+            
+            # Combine text (limit to avoid token limits)
+            combined_text = "\n\n".join(text_content)
+            if len(combined_text) > 10000:
+                combined_text = combined_text[:10000] + "... (truncated)"
+            
+            # Use Gemini to summarize if available
+            try:
+                import google.generativeai as genai
+                model = genai.GenerativeModel('gemini-2.0-flash')
+                
+                prompt = f"""
+                Summarize the main themes and topics in these related documents.
+                Be concise and focus on the key information.
+                
+                Documents:
+                {combined_text}
+                
+                Summary:
+                """
+                
+                response = model.generate_content(prompt)
+                return response.text.strip()
+            except Exception as ge:
+                print(f"Error using Gemini for summarization: {str(ge)}")
+                # Fall back to simple summarization
+                words = combined_text.split()
+                return " ".join(words[:100]) + "..." if len(words) > 100 else combined_text
+        
+        except Exception as e:
+            print(f"Error summarizing cluster: {str(e)}")
+            return "Error generating summary"
 
     def list_projects(self) -> List[str]:
         try:
@@ -1112,3 +1255,52 @@ class ProjectDataPipeline:
         
         print(f"\n==== COMPLETED SUMMARIZATION FOR: {collection_name} at {time.strftime('%Y-%m-%d %H:%M:%S')} ====\n")
         return final_summary
+
+
+def convert_ppt_to_pdf(input_file, output_file=None):
+    """Convert a PowerPoint file to PDF"""
+    convert(input_file, output_file)
+
+
+
+def convert_to_pdf(file_path):
+    """Convert a document (PPTX or DOCX) to PDF"""
+    extension = os.path.splitext(file_path)[1].lower()
+    output_file = os.path.splitext(file_path)[0] + ".pdf"
+    
+    if extension in ['.docx', '.doc']:
+        docx_convert(file_path, output_file)
+    elif extension in ['.pptx', '.ppt']:
+        convert_ppt_to_pdf(file_path, output_file)
+    else:
+        return None  # No conversion needed or not supported
+    
+    return output_file
+
+def extract_text_with_gemini(pdf_path, gemini_api_key,sow_data):
+    """Use Gemini to extract structured information from a PDF"""
+    genai.configure(api_key=gemini_api_key)
+    
+    # Use Gemini Pro Vision model for processing PDFs
+    model = genai.GenerativeModel('gemini-2.0-flash')
+    
+    # Read PDF as bytes for the API
+    with open(pdf_path, 'rb') as f:
+        pdf_bytes = f.read()
+    
+    # Create a prompt that extracts key information
+    prompt = """
+    Extract all the text and the understanding from it.
+    for diagrams properly extract the text and the understanding from it.
+    Format the output as a structured JSON with clear sections.
+    """
+    
+    # Create the image part from PDF bytes (first page)
+    # Note: For multi-page PDFs, you may need to split it first
+    response = model.generate_content([
+        prompt,
+        {'mime_type': 'application/pdf', 'data': pdf_bytes}
+    ])
+    
+    # Process and return the extraction result
+    return response.text

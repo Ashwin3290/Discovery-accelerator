@@ -149,7 +149,7 @@ class SOWParser:
         Format your response as a JSON object with section names as keys and their content as values.
         
         Document text:
-        {document_text[:10000]}  # Using first 10000 chars for extraction
+        {document_text}
         """
         
         print(f"Sending section extraction prompt to Gemini API...")
@@ -235,7 +235,7 @@ class SOWParser:
         
         prompt = f"""
         Extract all specific requirements from these SOW sections.
-        Be comprehensive - consider any statement that implies work to be done as a requirement.
+        Be comprehensive - consider only technical requirements and any statement that implies or connect to that to be done as a requirement.
         
         For each requirement:
         1. Provide a short ID (e.g., REQ-01)
@@ -262,7 +262,7 @@ class SOWParser:
         - reason: Brief explanation if marked as ambiguous
         
         SOW Sections:
-        {combined_text[:12000]}  # Using first 12000 chars for requirement extraction
+        {combined_text}
         """
         
         response = self.model.generate_content(prompt)
@@ -371,7 +371,7 @@ class SOWParser:
         3. "unclear": List of important items that should be clarified (with brief explanation of why)
         
         SOW Sections:
-        {combined_text[:12000]}  # Using first 12000 chars for boundary extraction
+        {combined_text}
         """
         
         response = self.model.generate_content(prompt)

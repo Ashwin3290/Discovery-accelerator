@@ -3,7 +3,6 @@ import io
 import base64
 from PIL import Image
 import google.generativeai as genai
-from sentence_transformers import SentenceTransformer
 import os
 import numpy as np
 from dotenv import load_dotenv
@@ -13,31 +12,33 @@ print("\n=== Starting Discovery Accelerator Model Inference Server ===\n")
 
 app = Flask(__name__)
 
-# Initialize models
-try:
-    print("Initializing text embedding model...")
-    text_embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-    print("Text embedding model initialized successfully")
-except Exception as e:
-    print(f"ERROR initializing text embedding model: {str(e)}")
-    raise
-
 # Configure Gemini API
 api_key = os.environ.get("GOOGLE_API_KEY")
 if not api_key:
     print("WARNING: No GOOGLE_API_KEY found in environment variables!")
     print("Please set the GOOGLE_API_KEY environment variable to use Gemini features.")
     print("Continuing with limited functionality...")
+    client = None
 else:
     print(f"Using Gemini API key: {api_key[:5]}...{api_key[-5:] if len(api_key) > 10 else ''}")
     try:
+        # Configure the genai client
         genai.configure(api_key=api_key)
-        print("Initializing Gemini model...")
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        print("Gemini model initialized successfully")
+        client = genai.Client(api_key=api_key)
+        
+        print("Initializing Gemini models...")
+        # Model for text generation
+        gen_model = genai.GenerativeModel('gemini-2.0-flash')
+        print("Gemini generative model initialized successfully")
+        
+        # Verify embedding model is available
+        print("Initializing Gemini embedding model...")
+        embedding_model_name = "gemini-embedding-exp-03-07"
+        print(f"Gemini embedding model '{embedding_model_name}' initialized successfully")
     except Exception as e:
-        print(f"ERROR initializing Gemini model: {str(e)}")
+        print(f"ERROR initializing Gemini models: {str(e)}")
         print("Continuing with limited functionality...")
+        client = None
 
 def preprocess_image(image: Image, max_size: int = 384) -> Image:
     """Resize image while maintaining aspect ratio"""
@@ -74,12 +75,20 @@ def embed_text():
             print("ERROR: No text provided")
             return jsonify({'error': 'No text provided'}), 400
         
+        if not client:
+            print("ERROR: Google API client not initialized")
+            return jsonify({'error': 'Embedding service not available - Google API client not initialized'}), 500
+        
         print(f"Creating embedding for text of length {len(text)}")
-        embedding = text_embedding_model.encode(
-            text,
-            convert_to_numpy=True,
-            normalize_embeddings=True
+        
+        # Use Google's embedding model
+        result = client.models.embed_content(
+            model="gemini-embedding-exp-03-07",
+            contents=text
         )
+        
+        # Extract the embedding values
+        embedding = np.array(result.embeddings[0].values)
         
         print(f"Successfully created embedding with shape {embedding.shape}")
         return jsonify({
@@ -101,6 +110,10 @@ def process_image():
             print("ERROR: No image provided")
             return jsonify({'error': 'No image provided'}), 400
         
+        if not client:
+            print("ERROR: Google API client not initialized")
+            return jsonify({'error': 'Image processing service not available - Google API client not initialized'}), 500
+        
         # Decode base64 image
         print("Decoding base64 image")
         image_bytes = base64.b64decode(image_data)
@@ -114,7 +127,7 @@ def process_image():
         try:
             # Use Gemini to caption the image
             print("Generating image caption with Gemini")
-            response = model.generate_content([
+            response = gen_model.generate_content([
                 "Describe the content of this image in detail.",
                 image
             ])
@@ -122,13 +135,14 @@ def process_image():
             description = response.text
             print(f"Caption generated: {description[:100]}...")
             
-            # Get text embedding for the generated description
+            # Get text embedding for the generated description using Google's embedding model
             print("Creating embedding for image caption")
-            text_embedding = text_embedding_model.encode(
-                description,
-                convert_to_numpy=True,
-                normalize_embeddings=True
+            embed_result = client.models.embed_content(
+                model="gemini-embedding-exp-03-07",
+                contents=description
             )
+            text_embedding = np.array(embed_result.embeddings[0].values)
+            
             print(f"Successfully created embedding with shape {text_embedding.shape}")
             
             return jsonify({
@@ -141,11 +155,11 @@ def process_image():
             
             # Fallback to simple embedding if Gemini fails
             fallback_text = "image content"
-            text_embedding = text_embedding_model.encode(
-                fallback_text,
-                convert_to_numpy=True,
-                normalize_embeddings=True
+            embed_result = client.models.embed_content(
+                model="gemini-embedding-exp-03-07",
+                contents=fallback_text
             )
+            text_embedding = np.array(embed_result.embeddings[0].values)
             
             return jsonify({
                 'embedding': text_embedding.reshape(1, -1).tolist(),
@@ -167,6 +181,10 @@ def process_image_batch():
             print("ERROR: No images provided or invalid format")
             return jsonify({'error': 'No images provided or invalid format'}), 400
         
+        if not client:
+            print("ERROR: Google API client not initialized")
+            return jsonify({'error': 'Image processing service not available - Google API client not initialized'}), 500
+        
         print(f"Processing batch of {len(image_data_batch)} images")
         results = []
         
@@ -182,19 +200,19 @@ def process_image_batch():
                 
                 try:
                     # Use Gemini to caption the image
-                    response = model.generate_content([
+                    response = gen_model.generate_content([
                         "Describe the content of this image in detail.",
                         image
                     ])
                     
                     description = response.text
                     
-                    # Get text embedding for the generated description
-                    text_embedding = text_embedding_model.encode(
-                        description,
-                        convert_to_numpy=True,
-                        normalize_embeddings=True
+                    # Get text embedding for the generated description using Google's embedding model
+                    embed_result = client.models.embed_content(
+                        model="gemini-embedding-exp-03-07",
+                        contents=description
                     )
+                    text_embedding = np.array(embed_result.embeddings[0].values)
                     
                     results.append({
                         'embedding': text_embedding.reshape(1, -1).tolist(),
@@ -206,11 +224,11 @@ def process_image_batch():
                     
                     # Fallback to simple embedding
                     fallback_text = "image content"
-                    text_embedding = text_embedding_model.encode(
-                        fallback_text,
-                        convert_to_numpy=True,
-                        normalize_embeddings=True
+                    embed_result = client.models.embed_content(
+                        model="gemini-embedding-exp-03-07",
+                        contents=fallback_text
                     )
+                    text_embedding = np.array(embed_result.embeddings[0].values)
                     
                     results.append({
                         'embedding': text_embedding.reshape(1, -1).tolist(),

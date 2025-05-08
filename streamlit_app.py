@@ -1,42 +1,32 @@
 import streamlit as st
-import hydralit as hy
-import hydralit_components as hc
 import os
 import requests
 import json
 import pandas as pd
 import time
-import numpy as np
 from datetime import datetime
 import base64
 from io import BytesIO
 import matplotlib.pyplot as plt
 from pathlib import Path
+from streamlit_option_menu import option_menu
+import streamlit_extras
 from streamlit_extras.colored_header import colored_header
 from streamlit_extras.card import card
 from streamlit_extras.add_vertical_space import add_vertical_space
 from streamlit_extras.metric_cards import style_metric_cards
 from streamlit_extras.stylable_container import stylable_container
 
-# Initialize Hydralit
-app = hy.HydraApp(
-    title='Discovery Accelerator',
-    favicon="🔍",
-    navbar_theme={"txc_inactive": "#FFFFFF", 
-                 "menu_background": "#2c3e50",
-                 "txc_active": "#FFFFFF",
-                 "option_active": "#4CAF50"},
-    hide_streamlit_markers=True,
-    use_navbar=True, 
-    navbar_sticky=False,
-    navbar_animation=True
+# Set page configuration
+st.set_page_config(
+    page_title="Discovery Accelerator",
+    page_icon="🔍",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Define API URL
-API_URL = "http://localhost:4000"  # Change this if your API is hosted elsewhere
-
-# Custom CSS for the entire app
-app_css = """
+# Custom CSS
+st.markdown("""
 <style>
     /* Main page styling */
     .block-container {
@@ -111,10 +101,10 @@ app_css = """
         font-weight: bold;
     }
 </style>
-"""
+""", unsafe_allow_html=True)
 
-# Add CSS to app
-st.markdown(app_css, unsafe_allow_html=True)
+# Define API URL
+API_URL = "http://localhost:4000"  # Change this if your API is hosted elsewhere
 
 # Helper functions
 def get_file_content_as_base64(file_path):
@@ -206,31 +196,51 @@ def create_progress_chart(project_status):
     
     return fig
 
-def loading_screen():
-    # Create a custom loading screen using Hydralit components
-    with hc.HyLoader('Loading Discovery Accelerator', 
-                    hc.Loaders.standard_loaders, 
-                    index=2):
-        time.sleep(1.5)
+# Sidebar navigation
+with st.sidebar:
+    st.image("https://i.imgur.com/O0PYcTs.png", width=250)  # Replace with your actual logo
+    st.write("#### Discovery Accelerator")
 
-# Define the Start Discovery page
-@app.addapp(title='Start Discovery', icon="🚀")
-def start_discovery():
-    # Show a notification alert at the top with app info
-    hc.info_card(title='Discovery Accelerator', 
-                content='Upload your SOW document and additional materials to process', 
-                sentiment='good',
-                bar_value=100)
+    selected = option_menu(
+        menu_title=None,
+        options=["Start Discovery", "Process Transcripts", "View Questions", "Discovery Status", "Reports"],
+        icons=["rocket-takeoff", "mic", "question-circle", "speedometer", "file-earmark-text"],
+        menu_icon="cast",
+        default_index=0,
+        styles={
+            "container": {"padding": "0!important", "background-color": "#f0f2f6"},
+            "icon": {"color": "#4CAF50", "font-size": "16px"},
+            "nav-link": {"font-size": "14px", "text-align": "left", "margin": "0px", "--hover-color": "#eee"},
+            "nav-link-selected": {"background-color": "#4CAF50", "color": "white"},
+        }
+    )
     
+    st.markdown("---")
+    st.info(
+        "Discovery Accelerator v1.0\n\n"
+        "A tool to streamline discovery processes for service-based companies."
+    )
+
+# Main content
+if selected == "Start Discovery":
     colored_header(
         label="Discovery Process",
         description="Upload SOW document and additional materials to process",
         color_name="green-70"
     )
 
-    with hc.box(border_shadow=True, shadow=True, width=100):
+    with stylable_container(
+        key="process_documents_container",
+        css_styles="""
+            {
+                border: 1px solid #ddd;
+                border-radius: 0.5rem;
+                padding: 1rem;
+                background-color: #f8f9fa;
+            }
+        """
+    ):
         # Project name input
-        st.markdown("### Project Details")
         doc_project_name = st.text_input("Project Name", placeholder="Enter a name for this discovery project", key="doc_project_name")
         
         # SOW document upload
@@ -261,17 +271,15 @@ def start_discovery():
                 st.write(f"✅ {file.name}")
         
         # Process documents button
-        col1, col2, col3 = st.columns([1, 2, 1])
+        col1, col2, col3 = st.columns([1, 1, 1])
         with col2:
             process_btn = st.button("Process Documents", 
-                        disabled=not (doc_project_name and sow_file), 
-                        key="process_docs_btn", 
-                        use_container_width=True)
+                         disabled=not (doc_project_name and sow_file), 
+                         key="process_docs_btn", 
+                         use_container_width=True)
         
         if process_btn:
-            with hc.HyLoader('Processing documents and extracting SOW data...', 
-                           hc.Loaders.standard_loaders, 
-                           index=3):
+            with st.spinner("Processing documents and extracting SOW data..."):
                 # Make API call to process documents
                 data = {
                     "project_name": doc_project_name,
@@ -282,11 +290,7 @@ def start_discovery():
                 response = api_request("process_documents", method="POST", data=data)
                 
                 if response and response.get("status") == "success":
-                    # Show success info card
-                    hc.info_card(title='Success!', 
-                                content=f"Document processing completed successfully!", 
-                                sentiment='good',
-                                bar_value=100)
+                    st.success(f"Document processing completed successfully!")
                     
                     # Show details
                     with st.expander("Processing Results", expanded=True):
@@ -295,44 +299,38 @@ def start_discovery():
                             st.metric("Project ID", response.get('project_id'))
                         with col2:
                             st.metric("Project Name", response.get('project_name'))
-                    
+                        
                     # Direct user to the View Questions tab
-                    hc.info_card(title='Next Steps', 
-                                content="Proceed to the 'View Questions' tab to view or generate discovery questions.", 
-                                sentiment='neutral',
-                                bar_value=75)
+                    st.info("Proceed to the 'View Questions' tab to view or generate discovery questions.")
                 else:
-                    hc.info_card(title='Error', 
-                                content="Failed to process documents.", 
-                                sentiment='negative',
-                                bar_value=100)
+                    st.error("Failed to process documents.")
                     if response:
                         st.json(response)
 
-# Define the Process Transcripts page
-@app.addapp(title='Process Transcripts', icon="🎙️")
-def process_transcripts():
-    # Show a notification alert at the top with app info
-    hc.info_card(title='Process Meeting Transcripts', 
-                content='Upload meeting transcripts to extract answers and generate follow-up questions', 
-                sentiment='good',
-                bar_value=100)
-    
+
+elif selected == "Process Transcripts":
     colored_header(
         label="Process Meeting Transcripts",
         description="Upload meeting transcripts to extract answers and generate follow-up questions",
         color_name="green-70"
     )
 
-    with hc.box(border_shadow=True, shadow=True, width=100):
+    with stylable_container(
+        key="transcript_container",
+        css_styles="""
+            {
+                border: 1px solid #ddd;
+                border-radius: 0.5rem;
+                padding: 1rem;
+                background-color: #f8f9fa;
+            }
+        """
+    ):
         # Get available projects
         projects = get_projects()
         
         if not projects:
-            hc.info_card(title='No Projects Found', 
-                        content='Please start a discovery process first.', 
-                        sentiment='warning',
-                        bar_value=100)
+            st.warning("No projects found. Please start a discovery process first.")
         else:
             # Select project
             selected_project = st.selectbox("Select Project", projects)
@@ -373,9 +371,7 @@ def process_transcripts():
                                            use_container_width=True)
                 
                 if process_transcript_btn:
-                    with hc.HyLoader('Processing transcript, extracting answers, and generating follow-up questions...', 
-                                     hc.Loaders.standard_loaders, 
-                                     index=3):
+                    with st.spinner("Processing transcript, extracting answers, and generating follow-up questions..."):
                         # Make API call to process transcript
                         data = {
                             "project_id": project_id,
@@ -385,10 +381,7 @@ def process_transcripts():
                         response = api_request("process_transcript", method="POST", data=data)
                         
                         if response and response.get("status") == "success":
-                            hc.info_card(title='Success!', 
-                                        content=f"Transcript processed successfully. Found {response.get('answers_found', 0)} answers.", 
-                                        sentiment='good',
-                                        bar_value=100)
+                            st.success(f"Transcript processed successfully. Found {response.get('answers_found', 0)} answers.")
                             
                             # Display follow-up questions
                             if response.get('followup_questions'):
@@ -400,54 +393,52 @@ def process_transcripts():
                             if response.get('discovery_status'):
                                 colored_header("Current Discovery Status", "", "green-50")
                                 status = response.get('discovery_status')
+                                col1, col2 = st.columns(2)
                                 
-                                metric_row1 = [
-                                    {"label": "Total Questions", "value": status.get('total_questions', 0)},
-                                    {"label": "Unanswered Questions", "value": status.get('question_status', {}).get('unanswered', 0)},
-                                    {"label": "Transcripts Processed", "value": status.get('transcript_count', 0)},
-                                    {"label": "Completion Status", "value": "Complete" if status.get('discovery_complete', False) else "In Progress"}
-                                ]
+                                with col1:
+                                    st.metric("Total Questions", status.get('total_questions', 0))
+                                    st.metric("Unanswered Questions", 
+                                             status.get('question_status', {}).get('unanswered', 0))
                                 
-                                hc.metric_row(metric_row1)
+                                with col2:
+                                    st.metric("Transcripts Processed", status.get('transcript_count', 0))
+                                    st.metric("Completion Status", 
+                                             "Complete" if status.get('discovery_complete', False) else "In Progress")
+                                
+                                # Apply custom styling to metrics
+                                style_metric_cards()
                                 
                                 # Progress chart
                                 st.pyplot(create_progress_chart(status))
                             
                             # Provide link to questions page
-                            hc.info_card(title='Next Steps', 
-                                        content="Go to 'View Questions' to see all questions or 'Discovery Status' for more details.", 
-                                        sentiment='neutral',
-                                        bar_value=75)
+                            st.info("Go to 'View Questions' to see all questions or 'Discovery Status' for more details.")
                         else:
-                            hc.info_card(title='Error', 
-                                        content="Failed to process transcript.", 
-                                        sentiment='negative',
-                                        bar_value=100)
+                            st.error("Failed to process transcript.")
 
-# Define the View Questions page
-@app.addapp(title='View Questions', icon="❓")
-def view_questions():
-    # Show a notification alert at the top with app info
-    hc.info_card(title='View and Manage Questions', 
-                content='View current questions, their status, and answers', 
-                sentiment='good',
-                bar_value=100)
-    
+elif selected == "View Questions":
     colored_header(
         label="View and Manage Questions",
         description="View current questions, their status, and answers",
         color_name="green-70"
     )
 
-    with hc.box(border_shadow=True, shadow=True, width=100):
+    with stylable_container(
+        key="questions_container",
+        css_styles="""
+            {
+                border: 1px solid #ddd;
+                border-radius: 0.5rem;
+                padding: 1rem;
+                background-color: #f8f9fa;
+            }
+        """
+    ):
         # Get available projects
         projects = get_projects()
         
         if not projects:
-            hc.info_card(title='No Projects Found', 
-                        content='Please start a discovery process first.', 
-                        sentiment='warning',
-                        bar_value=100)
+            st.warning("No projects found. Please start a discovery process first.")
         else:
             # Select project
             selected_project = st.selectbox("Select Project", projects)
@@ -459,20 +450,13 @@ def view_questions():
                     project_id = i + 1  # Simple assumption that project IDs start from 1
             
             if project_id:
-                # Filter options with a fancy status selector using Hydralit components
-                over_theme = {'txc_inactive': 'white', 'menu_background': '#2c3e50', 'txc_active': 'white',
-                             'option_active': '#4CAF50'}
-                
-                status_filter = hc.option_bar(
-                    option_definition=[
-                        {'icon': "bi bi-list-task", 'label': "All"},
-                        {'icon': "bi bi-x-circle", 'label': "Unanswered"},
-                        {'icon': "bi bi-dash-circle", 'label': "Partially Answered"},
-                        {'icon': "bi bi-check-circle", 'label': "Answered"}
-                    ],
-                    key='StatusFilter',
-                    override_theme=over_theme,
-                    horizontal_orientation=True
+                # Filter options
+                status_options = ["All", "Unanswered", "Partially Answered", "Answered"]
+                status_icons = ["❓", "🔴", "🟠", "🟢"]
+                status_filter = st.radio(
+                    "Filter by Status", 
+                    options=status_options,
+                    format_func=lambda x: f"{status_icons[status_options.index(x)]} {x}"
                 )
                 
                 status_param = None
@@ -484,19 +468,13 @@ def view_questions():
                 if status_param:
                     endpoint += f"?status={status_param}"
                 
-                with hc.HyLoader('Loading questions...', 
-                              hc.Loaders.standard_loaders, 
-                              index=2):
-                    response = api_request(endpoint)
+                response = api_request(endpoint)
                 
                 if response and response.get("status") == "success":
                     questions = response.get('questions', [])
                     
                     if not questions and status_filter == "All":
-                        hc.info_card(title='No Questions Found', 
-                                    content='No questions found for this project.', 
-                                    sentiment='warning',
-                                    bar_value=100)
+                        st.warning("No questions found for this project.")
                         
                         # Generate questions button
                         col1, col2, col3 = st.columns([1, 2, 1])
@@ -508,9 +486,7 @@ def view_questions():
                             )
                         
                         if gen_questions_btn:
-                            with hc.HyLoader('Generating questions based on SOW analysis...', 
-                                         hc.Loaders.standard_loaders, 
-                                         index=1):
+                            with st.spinner("Generating questions based on SOW analysis..."):
                                 # Make API call to generate questions directly
                                 data = {
                                     "project_id": project_id
@@ -522,10 +498,7 @@ def view_questions():
                                     # Already made the API call above to generate questions directly
                                     
                                     # Display results from the API call
-                                    hc.info_card(title='Success!', 
-                                               content=f"Question generation completed successfully! Generated {response.get('initial_questions_count', 0)} questions.", 
-                                               sentiment='good',
-                                               bar_value=100)
+                                    st.success(f"Question generation completed successfully! Generated {response.get('initial_questions_count', 0)} questions.")
                                     
                                     # Display initial questions
                                     if response.get('questions'):
@@ -534,22 +507,13 @@ def view_questions():
                                         st.dataframe(questions_df)
                                         
                                         # Reload the page to see questions (message only)
-                                        hc.info_card(title='Next Steps', 
-                                                   content="The questions have been generated. You'll see them in the list after refreshing.", 
-                                                   sentiment='neutral',
-                                                   bar_value=75)
+                                        st.info("The questions have been generated. You'll see them in the list after refreshing.")
                                 else:
-                                    hc.info_card(title='Error', 
-                                               content="Failed to generate questions.", 
-                                               sentiment='negative',
-                                               bar_value=100)
+                                    st.error("Failed to generate questions.")
                                     if response:
                                         st.json(response)
                     elif not questions:
-                        hc.info_card(title='No Questions', 
-                                    content='No questions found with the selected filter.', 
-                                    sentiment='neutral',
-                                    bar_value=100)
+                        st.info("No questions found with the selected filter.")
                     else:
                         # Prepare data for display
                         display_data = []
@@ -559,22 +523,17 @@ def view_questions():
                                 answer_text = q['answer'].get('answer_text', '')
                             
                             status_display = q.get('status', '')
-                            status_icon = "❓"
                             if status_display == 'unanswered':
-                                status_icon = "🔴"
                                 status_display = f"<span class='status-unanswered'>⚠️ Unanswered</span>"
                             elif status_display == 'partially_answered':
-                                status_icon = "🟠"
                                 status_display = f"<span class='status-partially'>⚠️ Partially Answered</span>"
                             elif status_display == 'answered':
-                                status_icon = "🟢"
                                 status_display = f"<span class='status-answered'>✅ Answered</span>"
                             
                             display_data.append({
                                 'ID': q.get('id'),
                                 'Question': q.get('question'),
                                 'Status': status_display,
-                                'Status_Icon': status_icon,
                                 'Priority': q.get('priority'),
                                 'Source': q.get('source'),
                                 'Answer': answer_text
@@ -583,20 +542,9 @@ def view_questions():
                         # Display as dataframe
                         st.markdown("### Questions")
                         questions_df = pd.DataFrame(display_data)
-                        
-                        # Create a nice table with Hydralit components
-                        question_table_data = [{
-                            'ID': q['ID'],
-                            'Question': q['Question'],
-                            'Status': q['Status_Icon'],
-                            'Priority': '⭐' * int(q['Priority']) if isinstance(q['Priority'], (int, float)) else q['Priority'],
-                            'Source': q['Source'][:30] + '...' if isinstance(q['Source'], str) and len(q['Source']) > 30 else q['Source'],
-                        } for q in display_data]
-                        
-                        hc.aggrid_interactive_table(df=pd.DataFrame(question_table_data),
-                                                   columns_auto_size_mode=2,
-                                                   theme='material',
-                                                   height=400)
+                        st.dataframe(questions_df.style.format({"Status": lambda x: x}), 
+                                    use_container_width=True,
+                                    height=400)
                         
                         # Allow export
                         csv = questions_df.to_csv(index=False)
@@ -621,7 +569,17 @@ def view_questions():
                                 break
                         
                         if selected_question:
-                            with hc.box(border_shadow=True, shadow=True, width=100, height=None):
+                            with stylable_container(
+                                key="question_detail_container",
+                                css_styles="""
+                                    {
+                                        border: 1px solid #ddd;
+                                        border-radius: 0.5rem;
+                                        padding: 1rem;
+                                        background-color: #f5f5f5;
+                                    }
+                                """
+                            ):
                                 col1, col2 = st.columns(2)
                                 
                                 with col1:
@@ -691,30 +649,29 @@ def view_questions():
                                     else:
                                         st.info("No answer available")
 
-# Define the Discovery Status page
-@app.addapp(title='Discovery Status', icon="📊")
-def discovery_status():
-    # Show a notification alert at the top with app info
-    hc.info_card(title='Discovery Status Dashboard', 
-                content='Check the current status of the discovery process', 
-                sentiment='good',
-                bar_value=100)
-    
+elif selected == "Discovery Status":
     colored_header(
         label="Discovery Status Dashboard",
         description="Check the current status of the discovery process",
         color_name="green-70"
     )
 
-    with hc.box(border_shadow=True, shadow=True, width=100):
+    with stylable_container(
+        key="status_container",
+        css_styles="""
+            {
+                border: 1px solid #ddd;
+                border-radius: 0.5rem;
+                padding: 1rem;
+                background-color: #f8f9fa;
+            }
+        """
+    ):
         # Get available projects
         projects = get_projects()
         
         if not projects:
-            hc.info_card(title='No Projects Found', 
-                        content='Please start a discovery process first.', 
-                        sentiment='warning',
-                        bar_value=100)
+            st.warning("No projects found. Please start a discovery process first.")
         else:
             # Select project
             selected_project = st.selectbox("Select Project", projects)
@@ -727,10 +684,7 @@ def discovery_status():
             
             if project_id:
                 # Get discovery status
-                with hc.HyLoader('Loading discovery status...', 
-                              hc.Loaders.standard_loaders, 
-                              index=2):
-                    response = api_request(f"discovery_status/{project_id}")
+                response = api_request(f"discovery_status/{project_id}")
                 
                 if response and response.get("status") == "success":
                     status = response.get('discovery_status', {})
@@ -738,15 +692,26 @@ def discovery_status():
                     # Display stats
                     st.subheader("Discovery Progress")
                     
-                    # Create metrics cards with Hydralit components
-                    metric_row1 = [
-                        {"label": "Total Questions", "value": status.get('total_questions', 0)},
-                        {"label": "Answered Questions", "value": status.get('question_status', {}).get('answered', 0)},
-                        {"label": "Partially Answered", "value": status.get('question_status', {}).get('partially_answered', 0)},
-                        {"label": "Unanswered", "value": status.get('question_status', {}).get('unanswered', 0)}
-                    ]
+                    # Create metrics cards with custom styling
+                    col1, col2, col3, col4 = st.columns(4)
                     
-                    hc.metric_row(metric_row1)
+                    with col1:
+                        st.metric("Total Questions", status.get('total_questions', 0))
+                    
+                    with col2:
+                        st.metric("Answered Questions", 
+                                 status.get('question_status', {}).get('answered', 0))
+                    
+                    with col3:
+                        st.metric("Partially Answered", 
+                                 status.get('question_status', {}).get('partially_answered', 0))
+                    
+                    with col4:
+                        st.metric("Unanswered", 
+                                 status.get('question_status', {}).get('unanswered', 0))
+                    
+                    # Apply custom styling to metrics
+                    style_metric_cards()
                     
                     # Display pie chart
                     st.pyplot(create_progress_chart(status))
@@ -754,15 +719,9 @@ def discovery_status():
                     # Display completion status
                     completion_status = status.get('discovery_complete', False)
                     if completion_status:
-                        hc.info_card(title='Discovery Status', 
-                                   content='✅ Discovery Process Complete', 
-                                   sentiment='good',
-                                   bar_value=100)
+                        st.success("✅ Discovery Process Complete")
                     else:
-                        hc.info_card(title='Discovery Status', 
-                                   content='🔄 Discovery Process In Progress', 
-                                   sentiment='warning',
-                                   bar_value=60)
+                        st.warning("🔄 Discovery Process In Progress")
                         
                         # Calculate completion percentage
                         total = status.get('total_questions', 0)
@@ -772,312 +731,63 @@ def discovery_status():
                         if total > 0:
                             completion_pct = 100 - ((unanswered + partially / 2) / total * 100)
                             
-                            # Create a styled progress bar with Hydralit components
-                            hc.progress_bar(
-                                progress_value=min(int(completion_pct), 100),
-                                label=f"Estimated completion: {completion_pct:.1f}%",
-                                override_theme={"progress_text": "#4CAF50", "progress_outline": "#ddd", "progress_fill": "#4CAF50"}
-                            )
+                            # Create a styled progress bar
+                            st.markdown(f"""
+                            <div style="border-radius:10px;overflow:hidden;background-color:#f0f0f0;height:20px;">
+                                <div style="background-color:#4CAF50;width:{min(completion_pct, 100)}%;height:20px;"></div>
+                            </div>
+                            <p style="text-align:center;margin-top:5px;font-weight:bold;">
+                                Estimated completion: {completion_pct:.1f}%
+                            </p>
+                            """, unsafe_allow_html=True)
                     
                     # Transcript count
                     colored_header("Transcripts Processed", "", "green-50")
                     
-                    with hc.box(border_shadow=True, shadow=True, width=100, height=None):
-                        hc.metric_card(
-                            title="Total Transcripts",
-                            content=status.get('transcript_count', 0),
-                            description=f"{status.get('transcript_count', 0)} meeting transcripts have been processed",
-                            sentiment='good' if status.get('transcript_count', 0) > 0 else 'neutral',
-                            key="transcript_count"
-                        )
+                    with stylable_container(
+                        key="transcript_stats",
+                        css_styles="""
+                            {
+                                background-color: #f5f5f5;
+                                border-radius: 0.5rem;
+                                padding: 1rem;
+                                border: 1px solid #ddd;
+                            }
+                        """
+                    ):
+                        st.metric("Total Transcripts", status.get('transcript_count', 0))
                     
                     # Links to other sections
                     add_vertical_space(2)
                     
-                    nav_grid = [
-                        {'name': 'View Questions', 'icon': 'bi bi-question-circle', 'id': 'view_questions', 'ttip': 'Go to View Questions to manage questions', 'func': ''},
-                        {'name': 'Process Transcripts', 'icon': 'bi bi-mic', 'id': 'process_transcripts', 'ttip': 'Go to Process Transcripts to add more transcript data', 'func': ''},
-                    ]
+                    col1, col2 = st.columns(2)
                     
-                    # Create a nice navigation menu that allows switching between tabs
-                    hc.nav_bar(
-                        menu_definition=nav_grid,
-                        home_name='View Questions',
-                        first_select=0,
-                        override_theme={'txc_inactive': 'white','menu_background':'#4CAF50','txc_active':'white','option_active':'#2c3e50'}
-                    )
-# Define the Reports page
-@app.addapp(title='Reports', icon="📄")
-def reports():
-    # Show a notification alert at the top with app info
-    hc.info_card(title='Discovery Reports', 
-                content='Generate comprehensive reports about the discovery process', 
-                sentiment='good',
-                bar_value=100)
-    
-    colored_header(
-        label="Discovery Reports",
-        description="Generate comprehensive reports about the discovery process",
-        color_name="green-70"
-    )
-
-    with hc.box(border_shadow=True, shadow=True, width=100, height=None):
-        # Get available projects
-        projects = get_projects()
-        
-        if not projects:
-            hc.info_card(title='No Projects Found', 
-                        content='Please start a discovery process first.', 
-                        sentiment='warning',
-                        bar_value=100)
-        else:
-            # Select project
-            selected_project = st.selectbox("Select Project", projects)
-            
-            # Get project ID
-            project_id = None
-            for i, project in enumerate(projects):
-                if project == selected_project:
-                    project_id = i + 1  # Simple assumption that project IDs start from 1
-            
-            if project_id:
-                # Generate report button
-                col1, col2, col3 = st.columns([1, 2, 1])
-                with col2:
-                    generate_report_btn = st.button(
-                        "Generate Comprehensive Report", 
-                        use_container_width=True
-                    )
-                
-                if generate_report_btn:
-                    with hc.HyLoader('Generating comprehensive report...', 
-                                   hc.Loaders.standard_loaders, 
-                                   index=1):
-                        # Get discovery report
-                        response = api_request(f"discovery_report/{project_id}")
-                        
-                        if response and response.get("status") == "success":
-                            # Display report
-                            hc.info_card(title='Success!', 
-                                       content='Report generated successfully', 
-                                       sentiment='good',
-                                       bar_value=100)
-                            
-                            # Project info
-                            colored_header("Project Information", "", "green-50")
-                            project_info = response.get('project', {})
-                            
-                            with hc.box(border_shadow=True, shadow=True, width=100, height=None):
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    st.markdown(f"**Project Name:** {project_info.get('name', 'Unknown')}")
-                                with col2:
-                                    st.markdown(f"**Created:** {project_info.get('created_at', 'Unknown')}")
-                            
-                            # SOW Summary
-                            colored_header("SOW Summary", "", "green-50")
-                            sow_summary = response.get('sow_summary', {})
-                            
-                            # Use Hydralit metrics row
-                            metric_row2 = [
-                                {"label": "Sections", "value": sow_summary.get('sections_count', 0)},
-                                {"label": "Requirements", "value": sow_summary.get('requirements_count', 0)},
-                                {"label": "In-Scope Items", "value": sow_summary.get('in_scope_items', 0)},
-                                {"label": "Out-of-Scope Items", "value": sow_summary.get('out_of_scope_items', 0)},
-                                {"label": "Unclear Items", "value": sow_summary.get('unclear_items', 0)}
-                            ]
-                            
-                            hc.metric_row(metric_row2)
-                            
-                            # Question stats
-                            colored_header("Question Statistics", "", "green-50")
-                            question_stats = response.get('questions', {})
-                            
-                            with hc.box(border_shadow=True, shadow=True, width=100, height=None):
-                                hc.metric_card(
-                                    title="Total Questions",
-                                    content=question_stats.get('total', 0),
-                                    description=f"{question_stats.get('total', 0)} questions generated for this project",
-                                    sentiment='good' if question_stats.get('total', 0) > 0 else 'neutral',
-                                    key="total_questions"
-                                )
-                                
-                                # Status breakdown
-                                st.write("**Questions by Status:**")
-                                status_counts = question_stats.get('by_status', {})
-                                status_df = pd.DataFrame([
-                                    {"Status": status, "Count": count}
-                                    for status, count in status_counts.items()
-                                ])
-                                
-                                if not status_df.empty:
-                                    # Create a nice bar chart with Hydralit
-                                    st.bar_chart(status_df.set_index("Status"))
-                            
-                            # Transcript summary
-                            colored_header("Transcript Summary", "", "green-50")
-                            transcript_info = response.get('transcripts', {})
-                            
-                            with hc.box(border_shadow=True, shadow=True, width=100, height=None):
-                                hc.metric_card(
-                                    title="Total Transcripts",
-                                    content=transcript_info.get('count', 0),
-                                    description=f"{transcript_info.get('count', 0)} meeting transcripts have been processed",
-                                    sentiment='good' if transcript_info.get('count', 0) > 0 else 'neutral',
-                                    key="transcript_count_report"
-                                )
-                                
-                                if transcript_info.get('details'):
-                                    st.write("**Transcript Details:**")
-                                    transcript_df = pd.DataFrame([
-                                        {
-                                            "Date": t.get('meeting_date', 'Unknown'),
-                                            "Length (chars)": len(t.get('transcript_text', '')),
-                                            "Processed": "Yes" if t.get('processed', False) else "No"
-                                        }
-                                        for t in transcript_info.get('details', [])
-                                    ])
-                                    
-                                    # Use Hydralit table for better styling
-                                    hc.aggrid_interactive_table(df=transcript_df, 
-                                                              theme='material',
-                                                              height=300)
-                            
-                            # New information
-                            colored_header("New Information Identified", "", "green-50")
-                            new_info = response.get('new_information', [])
-                            
-                            with hc.box(border_shadow=True, shadow=True, width=100, height=None):
-                                if new_info:
-                                    new_info_df = pd.DataFrame([
-                                        {
-                                            "Topic": item.get('topic', 'Unknown'),
-                                            "Impact": item.get('impact', 'Unknown'),
-                                            "Priority": item.get('priority', 'Unknown'),
-                                            "Status": item.get('status', 'Unknown')
-                                        }
-                                        for item in new_info
-                                    ])
-                                    
-                                    # Use Hydralit table for better styling
-                                    hc.aggrid_interactive_table(df=new_info_df, 
-                                                              theme='material',
-                                                              height=300)
-                                else:
-                                    st.info("No new information identified.")
-                            
-                            # Completion status
-                            colored_header("Discovery Status", "", "green-50")
-                            discovery_status = response.get('discovery_status', {})
-                            
-                            with hc.box(border_shadow=True, shadow=True, width=100, height=None):
-                                if discovery_status.get('discovery_complete', False):
-                                    hc.info_card(title='Discovery Status', 
-                                              content='✅ Discovery Process Complete', 
-                                              sentiment='good',
-                                              bar_value=100)
-                                else:
-                                    hc.info_card(title='Discovery Status', 
-                                              content='🔄 Discovery Process In Progress', 
-                                              sentiment='warning',
-                                              bar_value=60)
-                            
-                            # Export options
-                            colored_header("Export Report", "", "green-50")
-                            
-                            # Create JSON for download
-                            report_json = json.dumps(response, indent=2)
-                            col1, col2, col3 = st.columns([1, 2, 1])
-                            with col2:
-                                st.download_button(
-                                    "📥 Download Full Report (JSON)",
-                                    report_json,
-                                    f"{selected_project}_report.json",
-                                    "application/json",
-                                    use_container_width=True
-                                )
-                        else:
-                            hc.info_card(title='Error', 
-                                       content='Failed to generate report.', 
-                                       sentiment='negative',
-                                       bar_value=100)
-
-# Create a fancy splash screen
-def load_splash_screen():
-    # Fancy Hydralit splash animation
-    over_theme = {'txc_inactive': 'white', 'menu_background': '#2c3e50', 'txc_active': 'white',
-                 'option_active': '#4CAF50'}
-    
-    # Create a nice centered splash screen
-    col1, col2, col3 = st.columns([1, 3, 1])
-    with col2:
-        hc.info_card(title='Welcome to Discovery Accelerator', 
-                  content='Streamlining discovery processes for service-based companies', 
-                  sentiment='good',
-                  bar_value=100)
-        
-        # Add version info
-        st.markdown("<div style='text-align: center; color: gray;'>Version 1.0 - Hydralit Enhanced</div>", unsafe_allow_html=True)
-        
-        # Add a loading animation
-        with hc.HyLoader('Loading Discovery Accelerator', 
-                       hc.Loaders.pulse_bars):
-            time.sleep(2)
-
-# Add a login page (can be expanded with real auth later)
-@app.addapp(is_home=True, title='Login', icon="🔐")
-def login():
-    hide_logo_check = st.sidebar.checkbox('Hide Logo')
-    hide_streamlit_logo = hide_logo_check
-    
-    if 'authenticated' not in st.session_state or not st.session_state['authenticated']:
-        st.session_state['authenticated'] = False
-    
-    # Custom login form with Hydralit
-    with hc.box(border_shadow=True, shadow=True, width=100, height=None):
-        colored_header(
-            label="Discovery Accelerator Login",
-            description="Access the Discovery Accelerator platform",
-            color_name="green-70"
-        )
-        
-        # Create a simple login form
-        auth_form_container = st.container()
-        
-        with auth_form_container:
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
-            
-            col1, col2, col3 = st.columns([1, 2, 1])
-            
-            with col2:
-                if st.button("Login", use_container_width=True):
-                    # Add simple authentication logic (demo only)
-                    if username == "admin" and password == "admin":
-                        st.session_state['authenticated'] = True
-                        st.success("Login successful!")
-                        time.sleep(1)
-                        st.experimental_rerun()  # Force UI refresh after login
-                    else:
-                        hc.info_card(title='Login Failed', 
-                                   content='Invalid username or password (use admin/admin for demo)', 
-                                   sentiment='negative',
-                                   bar_value=100)
-    
-        # Show a note about demo credentials
-        st.markdown("**Demo Credentials:** Username: admin, Password: admin")
-    
-    # If authenticated, redirect to splash screen then Start Discovery
-    if st.session_state['authenticated']:
-        # Show splash screen
-        load_splash_screen()
-        
-        # Auto-redirect to Start Discovery page
-        app.set_access(0, access=True)  # Enable access to all apps
-        
-        # Direct user to Start Discovery page 
-        app.session_state.selected_app = 'Start Discovery'
-
-# Run the HydraApp
-app.add_loader_app(function=load_splash_screen)
-app.run()
+                    with col1:
+                        with stylable_container(
+                            key="link_questions",
+                            css_styles="""
+                                {
+                                    background-color: #e8f4ea;
+                                    border-radius: 0.5rem;
+                                    padding: 1rem;
+                                    border: 1px solid #4CAF50;
+                                    text-align: center;
+                                }
+                            """
+                        ):
+                            st.info("Go to 'View Questions' to manage questions")
+                    
+                    with col2:
+                        with stylable_container(
+                            key="link_transcripts",
+                            css_styles="""
+                                {
+                                    background-color: #e8f4ea;
+                                    border-radius: 0.5rem;
+                                    padding: 1rem;
+                                    border: 1px solid #4CAF50;
+                                    text-align: center;
+                                }
+                            """
+                        ):
+                            st.info("Go to 'Process Transcripts' to add more transcript data")

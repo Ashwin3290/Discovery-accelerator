@@ -9,6 +9,7 @@ from pathlib import Path
 
 from file_processing import ProjectDataPipeline
 from discovery_accelerator import DiscoveryAccelerator
+# from adk import AgenticDiscoveryAccelerator as DiscoveryAccelerator
 from discovery_db import DiscoveryDatabase
 from dotenv import load_dotenv
 load_dotenv()
@@ -87,7 +88,7 @@ app = FastAPI(
 # Configuration
 UPLOAD_FOLDER = './uploads'
 CHROMA_PATH = './chroma_db'
-INFERENCE_API_URL = "http://localhost:5000"  # Default local inference API URL
+INFERENCE_API_URL = "localhost:5000"  # Default local inference API URL
 GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 # Ensure upload directory exists
@@ -97,7 +98,8 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 pipeline = ProjectDataPipeline(
     base_dir=UPLOAD_FOLDER,
     inference_api_url=INFERENCE_API_URL,
-    chroma_path=CHROMA_PATH
+    chroma_path=CHROMA_PATH,
+    gemini_api_key=GEMINI_API_KEY,
 )
 
 def sanitize_filename(filename: str) -> str:
@@ -139,13 +141,13 @@ async def process_directory(request: DirectoryProcessRequest):
         
         # Get project stats
         stats = pipeline.get_project_stats(project_name)
-        summary = pipeline.summarize_existing_chroma(project_name)
+        # summary = pipeline.summarize_existing_chroma(project_name)
         
         return {
             'status': 'success',
             'project_name': project_name,
             'stats': stats,
-            'synopsis': summary
+            # 'synopsis': summary
         }
     
     except Exception as e:
@@ -342,7 +344,8 @@ async def generate_questions(request: GenerateQuestionsRequest):
         print("Question generation starting...")
         result = accelerator.generate_questions(
             project_id=request.project_id,
-            sow_data=request.sow_data
+            sow_data=request.sow_data,
+            chroma_path=CHROMA_PATH
         )
         
         return result
