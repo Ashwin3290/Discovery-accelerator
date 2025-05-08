@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import os
@@ -6,6 +6,7 @@ import shutil
 from fastapi.responses import JSONResponse
 import uvicorn
 from pathlib import Path
+from fastapi.middleware.cors import CORSMiddleware
 
 from file_processing import ProjectDataPipeline
 from discovery_accelerator import DiscoveryAccelerator
@@ -84,6 +85,18 @@ app = FastAPI(
     description="API for processing SOW documents, generating discovery questions, and analyzing meeting transcripts",
     version="1.0.0"
 )
+
+# CORS configuration
+origins = [
+    "http://localhost",
+    "http://localhost:3000",  # Assuming your React app runs on port 3000
+    "http://localhost:8080",
+]
+
+app.add_middleware(
+    CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
+)
+
 
 # Configuration
 UPLOAD_FOLDER = './uploads'
