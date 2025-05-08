@@ -330,7 +330,7 @@ async def process_documents(request: ProcessDocumentsRequest):
             sow_path=request.sow_path,
             additional_docs_paths=request.additional_docs_paths
         )
-        
+        print("Document processing completed.")
         return result
     
     except Exception as e:
