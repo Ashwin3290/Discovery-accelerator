@@ -1,0 +1,228 @@
+/* Card Component Styles */
+.card {
+    @apply bg-white rounded-lg border border-gray-200 shadow-sm p-6 transition-shadow hover:shadow-md;
+  }
+  
+  .cardHeader {
+    @apply border-b border-gray-200 pb-3 mb-4;
+  }
+  
+  .cardTitle {
+    @apply text-lg font-semibold text-gray-800;
+  }
+  
+  .cardFooter {
+    @apply border-t border-gray-200 pt-3 mt-4;
+  }
+  
+  /* Button Styles */
+  .btnPrimary {
+    @apply bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 
+           rounded-md transition-all duration-200 shadow-sm hover:shadow focus:outline-none
+           focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 hover:-translate-y-0.5;
+  }
+  
+  .btnSecondary {
+    @apply bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 
+           rounded-md transition-all duration-200 hover:-translate-y-0.5 focus:outline-none
+           focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50;
+  }
+  
+  .btnOutline {
+    @apply border border-green-500 text-green-500 hover:bg-green-50 font-medium py-2 px-4 
+           rounded-md transition-all duration-200 hover:-translate-y-0.5 focus:outline-none
+           focus:ring-2 focus:ring-green-500 focus:ring-opacity-50;
+  }
+  
+  .btnDanger {
+    @apply bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 
+           rounded-md transition-all duration-200 shadow-sm hover:shadow focus:outline-none
+           focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 hover:-translate-y-0.5;
+  }
+  
+  /* Form Control Styles */
+  .formGroup {
+    @apply mb-4;
+  }
+  
+  .formLabel {
+    @apply block text-sm font-medium text-gray-700 mb-1;
+  }
+  
+  .formInput {
+    @apply w-full p-2 border border-gray-300 rounded-md focus:outline-none 
+           focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200;
+  }
+  
+  .formInputError {
+    @apply border-red-300 focus:ring-red-500 focus:border-red-500;
+  }
+  
+  .formHelpText {
+    @apply mt-1 text-xs text-gray-500;
+  }
+  
+  .formError {
+    @apply mt-1 text-xs text-red-500;
+  }
+  
+  /* Alert Styles */
+  .alert {
+    @apply p-4 rounded-md mb-4;
+  }
+  
+  .alertSuccess {
+    @apply bg-green-50 border border-green-200 text-green-700;
+  }
+  
+  .alertWarning {
+    @apply bg-yellow-50 border border-yellow-200 text-yellow-700;
+  }
+  
+  .alertDanger {
+    @apply bg-red-50 border border-red-200 text-red-700;
+  }
+  
+  .alertInfo {
+    @apply bg-blue-50 border border-blue-200 text-blue-700;
+  }
+  
+  /* Badge Styles */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  
+  .badgePrimary {
+    @apply bg-green-100 text-green-800;
+  }
+  
+  .badgeSecondary {
+    @apply bg-gray-100 text-gray-800;
+  }
+  
+  .badgeWarning {
+    @apply bg-yellow-100 text-yellow-800;
+  }
+  
+  .badgeDanger {
+    @apply bg-red-100 text-red-800;
+  }
+  
+  .badgeInfo {
+    @apply bg-blue-100 text-blue-800;
+  }
+  
+  /* Table Styles */
+  .table {
+    @apply min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden;
+  }
+  
+  .tableHead {
+    @apply bg-gray-50;
+  }
+  
+  .tableHeader {
+    @apply px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
+  }
+  
+  .tableHeaderSortable {
+    @apply cursor-pointer hover:bg-gray-100;
+  }
+  
+  .tableRow {
+    @apply bg-white hover:bg-gray-50;
+  }
+  
+  .tableRowAlternate {
+    @apply bg-gray-50 hover:bg-gray-100;
+  }
+  
+  .tableCell {
+    @apply px-6 py-4 whitespace-nowrap text-sm text-gray-500;
+  }
+  
+  /* Loader Styles */
+  .loader {
+    @apply inline-block animate-spin rounded-full border-t-2 border-b-2 border-green-500;
+  }
+  
+  .loaderSm {
+    @apply h-4 w-4;
+  }
+  
+  .loaderMd {
+    @apply h-8 w-8;
+  }
+  
+  .loaderLg {
+    @apply h-12 w-12;
+  }
+  
+  /* Tab Styles */
+  .tabs {
+    @apply border-b border-gray-200 mb-6;
+  }
+  
+  .tabList {
+    @apply -mb-px flex space-x-8;
+  }
+  
+  .tab {
+    @apply py-2 px-1 border-b-2 font-medium text-sm;
+  }
+  
+  .tabActive {
+    @apply border-green-500 text-green-600;
+  }
+  
+  .tabInactive {
+    @apply border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300;
+  }
+  
+  /* Progress Styles */
+  .progressContainer {
+    @apply w-full bg-gray-200 rounded-full h-2.5 mb-4;
+  }
+  
+  .progressBar {
+    @apply bg-green-500 h-2.5 rounded-full;
+  }
+  
+  /* Custom Cards */
+  .metricCard {
+    @apply bg-white rounded-lg border border-gray-200 shadow-sm p-4;
+  }
+  
+  .metricLabel {
+    @apply text-sm text-gray-500 font-medium;
+  }
+  
+  .metricValue {
+    @apply text-3xl font-bold mt-1;
+  }
+  
+  /* Colored Headers */
+  .coloredHeader {
+    @apply mb-6;
+  }
+  
+  .coloredHeaderGreen70 {
+    @apply border-l-4 border-green-600 pl-3;
+  }
+  
+  .coloredHeaderGreen50 {
+    @apply border-l-4 border-green-400 pl-3;
+  }
+  
+  /* Status Styles */
+  .statusUnanswered {
+    @apply text-red-600 font-medium;
+  }
+  
+  .statusPartially {
+    @apply text-yellow-600 font-medium;
+  }
+  
+  .statusAnswered {
+    @apply text-green-600 font-medium;
+  }

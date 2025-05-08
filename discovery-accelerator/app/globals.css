@@ -1,0 +1,316 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 248, 249, 250;
+  --background-end-rgb: 255, 255, 255;
+  --primary-color: #4CAF50;
+  --primary-hover: #45a049;
+  --header-color: #2c3e50;
+  --card-bg: #f0f2f6;
+  --transition-speed: 0.3s;
+  --card-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  --card-shadow-hover: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Dark theme variables */
+.dark {
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 17, 24, 39;
+  --background-end-rgb: 17, 24, 39;
+  --header-color: #e2e8f0;
+  --card-bg: #1f2937;
+  --card-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  --card-shadow-hover: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+  min-height: 100vh;
+}
+
+.dark body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-start-rgb));
+}
+
+h1, h2, h3, h4, h5 {
+  color: var(--header-color);
+  font-family: 'Roboto', sans-serif;
+}
+
+h1 {
+  border-bottom: 2px solid var(--primary-color);
+  padding-bottom: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+/* Enhanced button styling */
+.btn-primary {
+  @apply px-4 py-2 bg-green-500 text-white rounded-md font-medium
+         hover:bg-green-600 transition-all duration-200 
+         focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2
+         transform hover:-translate-y-0.5 hover:shadow-md
+         dark:ring-offset-gray-800;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 bg-gray-200 text-gray-800 rounded-md font-medium
+         hover:bg-gray-300 transition-all duration-200
+         focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2
+         transform hover:-translate-y-0.5
+         dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600
+         dark:ring-offset-gray-800;
+}
+
+.btn-outline {
+  @apply px-4 py-2 bg-white text-green-600 rounded-md font-medium
+         border border-green-500 hover:bg-green-50 transition-all duration-200
+         focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2
+         transform hover:-translate-y-0.5
+         dark:bg-gray-800 dark:border-green-400 dark:text-green-400 dark:hover:bg-gray-700
+         dark:ring-offset-gray-800;
+}
+
+/* Enhanced card styling */
+.card {
+  @apply p-6 bg-white rounded-lg border border-gray-200 shadow-sm
+         hover:shadow-md transition-all duration-200
+         dark:bg-gray-800 dark:border-gray-700;
+}
+
+.card-hover {
+  @apply hover:-translate-y-1;
+}
+
+/* Status indicators */
+.status-unanswered {
+  color: #e74c3c;
+  font-weight: bold;
+}
+
+.status-partially {
+  color: #f39c12;
+  font-weight: bold;
+}
+
+.status-answered {
+  color: #2ecc71;
+  font-weight: bold;
+}
+
+/* Status badges */
+.badge {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.badge-success {
+  @apply bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200;
+}
+
+.badge-warning {
+  @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200;
+}
+
+.badge-danger {
+  @apply bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200;
+}
+
+.badge-info {
+  @apply bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200;
+}
+
+/* Progress bar */
+.progress-container {
+  border-radius: 10px;
+  overflow: hidden;
+  background-color: #f0f0f0;
+  height: 20px;
+  width: 100%;
+}
+
+.dark .progress-container {
+  background-color: #374151;
+}
+
+.progress-bar {
+  background-color: var(--primary-color);
+  height: 20px;
+}
+
+/* For the colored header component */
+.colored-header {
+  margin-bottom: 1.5rem;
+}
+
+.colored-header-green-70 {
+  border-left: 5px solid var(--primary-color);
+  padding-left: 10px;
+}
+
+.colored-header-green-50 {
+  border-left: 5px solid #8bc34a;
+  padding-left: 10px;
+}
+
+/* Dark mode overrides for components */
+.dark .form-control {
+  @apply bg-gray-700 border-gray-600 text-white focus:border-green-400 focus:ring-green-400;
+}
+
+.dark .form-label {
+  @apply text-gray-300;
+}
+
+.dark .form-hint {
+  @apply text-gray-400;
+}
+
+.dark .table-container {
+  @apply border-gray-700;
+}
+
+.dark .data-table thead {
+  @apply bg-gray-800;
+}
+
+.dark .data-table th {
+  @apply text-gray-300;
+}
+
+.dark .data-table tbody {
+  @apply bg-gray-800 divide-gray-700;
+}
+
+.dark .data-table td {
+  @apply text-gray-300;
+}
+
+.dark .data-table tr:hover {
+  @apply bg-gray-700;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.3s ease-out;
+}
+
+/* Table styling */
+.table-container {
+  @apply overflow-x-auto rounded-lg border border-gray-200 shadow-sm dark:border-gray-700;
+}
+
+.data-table {
+  @apply min-w-full divide-y divide-gray-200 dark:divide-gray-700;
+}
+
+.data-table thead {
+  @apply bg-gray-50 dark:bg-gray-800;
+}
+
+.data-table th {
+  @apply px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider;
+}
+
+.data-table tbody {
+  @apply bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700;
+}
+
+.data-table td {
+  @apply px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400;
+}
+
+.data-table tr:hover {
+  @apply bg-gray-50 dark:bg-gray-700;
+}
+
+/* Form controls */
+.form-control {
+  @apply block w-full p-2 border border-gray-300 rounded-md shadow-sm
+         focus:ring-green-500 focus:border-green-500 sm:text-sm
+         dark:bg-gray-700 dark:border-gray-600 dark:text-white;
+}
+
+.form-label {
+  @apply block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1;
+}
+
+.form-hint {
+  @apply mt-1 text-sm text-gray-500 dark:text-gray-400;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 5px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #374151;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 5px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* Dropdown menu animation */
+.dropdown-enter {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.dropdown-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 200ms, transform 200ms;
+}
+
+.dropdown-exit {
+  opacity: 1;
+}
+
+.dropdown-exit-active {
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 200ms, transform 200ms;
+}
