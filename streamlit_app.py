@@ -524,11 +524,11 @@ elif selected == "View Questions":
                             
                             status_display = q.get('status', '')
                             if status_display == 'unanswered':
-                                status_display = f"<span class='status-unanswered'>⚠️ Unanswered</span>"
+                                status_display = f"⚠️ Unanswered"
                             elif status_display == 'partially_answered':
-                                status_display = f"<span class='status-partially'>⚠️ Partially Answered</span>"
+                                status_display = f"⚠️ Partially Answered"
                             elif status_display == 'answered':
-                                status_display = f"<span class='status-answered'>✅ Answered</span>"
+                                status_display = f"✅ Answered"
                             
                             display_data.append({
                                 'ID': q.get('id'),
@@ -585,7 +585,7 @@ elif selected == "View Questions":
                                 with col1:
                                     card(
                                         title="Question Information",
-                                        content=f"{selected_question.get('question')}",
+                                        text=f"{selected_question.get('question')}",
                                         image=None,
                                         styles={
                                             "card": {

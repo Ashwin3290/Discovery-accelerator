@@ -94,7 +94,7 @@ class TranscriptAnalyzer:
             {questions_text}
             
             TRANSCRIPT:
-            {transcript_text[:30000]}  # Using first 30000 chars for analysis
+            {transcript_text}
             
             For each question, determine if there is a relevant answer in the transcript.
             Format your response as a JSON array of objects with these keys:

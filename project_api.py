@@ -140,13 +140,13 @@ async def process_directory(request: DirectoryProcessRequest):
         pipeline.process_project(project_name, project_dir)
         
         # Get project stats
-        stats = pipeline.get_project_stats(project_name)
+        # stats = pipeline.get_project_stats(project_name)
         # summary = pipeline.summarize_existing_chroma(project_name)
         
         return {
             'status': 'success',
             'project_name': project_name,
-            'stats': stats,
+            # 'stats': stats,
             # 'synopsis': summary
         }
     

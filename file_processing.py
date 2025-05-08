@@ -555,12 +555,12 @@ class ProjectDataPipeline:
         print(f"\n==== Processing project: {project_name} ====\nDirectory: {project_dir}")
         
         # Create collection
-        try:
-            collection = self.create_project_collection(project_name)
-            print(f"ChromaDB collection created/accessed successfully")
-        except Exception as e:
-            print(f"ERROR creating ChromaDB collection: {str(e)}")
-            raise
+        # try:
+        #     collection = self.create_project_collection(project_name)
+        #     print(f"ChromaDB collection created/accessed successfully")
+        # except Exception as e:
+        #     print(f"ERROR creating ChromaDB collection: {str(e)}")
+        #     raise
             
         documents = {}
         
@@ -601,7 +601,7 @@ class ProjectDataPipeline:
             
         print(f"\n==== Completed processing project: {project_name} ====\n")
 
-    def process_documents_batch(self, documents: List[Dict], collection):
+    def process_documents_batch(self, documents: List[Dict], collection=None):
         """Process a batch of documents and add to collection"""
         if documents:
             print(f"Creating embeddings for {len(documents)} documents")
@@ -958,7 +958,7 @@ class ProjectDataPipeline:
             self.logger.error(f"Error getting stats for project {project_name}: {str(e)}")
             return {}
         
-    def summarize_existing_chroma(self, collection_name, eps=0.5, min_samples=5, gemini_model="gemini-2.0-flash"):
+    def summarize_existing_chroma(self, collection_name=None, eps=0.5, min_samples=5, gemini_model="gemini-2.0-flash"):
         print(f"\n==========================================\nSTARTING SUMMARIZATION FOR: {collection_name}\n==========================================")
         """Summarize an existing Chroma DB collection using DBSCAN clustering and Gemini with enhanced logging.
         
