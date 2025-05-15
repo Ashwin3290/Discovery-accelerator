@@ -38,7 +38,7 @@ import io
 import re
 import json
 import gc
-
+import time
 # Set up Gemini API
 os.environ["GOOGLE_API_KEY"] = "AIzaSyAo-zfJCvUMxa91I5oC6r7AWSaWC6cn0cw"
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
@@ -1284,6 +1284,7 @@ def convert_to_pdf(file_path):
         docx_convert(file_path, output_file)
     elif extension in ['.pptx', '.ppt']:
         convert_ppt_to_pdf(file_path, output_file)
+        output_file = output_file+"\\"+output_file.split("\\")[-1]  # Get the file name only
     else:
         return None  # No conversion needed or not supported
     
