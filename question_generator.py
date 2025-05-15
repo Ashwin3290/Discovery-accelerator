@@ -534,7 +534,8 @@ class QuestionGenerator:
             Note:
             - Be specific and actionable
             - Avoid generic or vague questions
-            - Do not include REQUIREMENT ID in the question text and instead mention the actual things.
+            - STRICTLY DO NOT INCLUDE REQUIREMENT ID IN THE QUESTION TEXT. For example, 'REQ_ID 1', 'REQ_ID 2', 'Requirement 1', etc. DO NOT INCLUDE ANYTHING LIKE THIS IN THE QUESTION TEXT.
+            - DO NOT generate more than 5 questions per each requirement.
 
             Format your response as a JSON array of objects with keys:
             - question: The specific question text
@@ -707,71 +708,59 @@ class QuestionGenerator:
             # Define industry-specific prompt templates based on project type
             industry_prompts = {
                 'software_development': """
-                As a software development expert, review this SOW and generate 3-5 critical questions
-                that are often missed in software modernization projects but can cause significant issues if not addressed early.
-                
-                Focus on:
-                - Technical architecture requirements and constraints
-                - Integration requirements with existing systems
-                - Data migration needs and approach
-                - Performance requirements and SLAs
-                - Security requirements and compliance
-                - Testing and quality assurance
-                - Post-deployment support and maintenance
+                As an expert in software development, review the Statement of Work (SOW) and generate 3-5 critical questions commonly overlooked in software modernization projects. These questions, if left unaddressed early, could lead to significant challenges down the line. Please focus on the following areas:
+
+                -Technical Architecture: Are the architecture requirements and potential constraints clearly defined, and is there a strategy for scaling or adapting to future needs?
+                -System Integration: How will the new system integrate with existing infrastructure and legacy systems, and are there any compatibility issues or data flow concerns?
+                -Data Migration Strategy: What are the risks and methodologies associated with migrating data, ensuring data integrity, and maintaining business continuity during the transition?
+                -Performance and SLAs: Are there clear performance benchmarks, load expectations, and Service Level Agreements (SLAs) that meet business requirements, especially under peak usage?
+                -Security and Compliance: How are security protocols addressed, and do they meet relevant industry standards and regulations (e.g., GDPR, HIPAA)?
+                -Testing and Quality Assurance: Is there a robust testing plan covering functional, integration, performance, and security testing, including user acceptance testing (UAT)?
+                -Post-deployment Support: What is the post-deployment support and maintenance plan, including patch management, system monitoring, and issue resolution timelines?
                 """,
                 
                 'consulting': """
-                As a consulting expert for a discovery and assessment engagement, review this SOW and generate 3-5 critical questions
-                that are often missed in assessment projects but can cause significant issues if not addressed early.
-                
-                Focus on:
-                - Clarity on decision-making authority and processes
-                - Definition of what constitutes success for the assessment
-                - Expected format and detail level of deliverables
-                - Client resource availability and expectations
-                - Knowledge transfer expectations
-                - Follow-on work expectations and transition
+                As a consulting expert in discovery and assessment engagements, review this Statement of Work (SOW) and generate 3-5 critical questions that are often overlooked but can lead to significant issues if not addressed early. Focus on the following areas:
+
+                - Decision-Making Authority and Processes: Are the decision-making authority and escalation paths clearly defined, and is there alignment on who has the final say in key project decisions?
+                - Success Definition for the Assessment: Has a clear and measurable definition of success been established for the assessment, including specific outcomes or KPIs that will determine the project's effectiveness?
+                - Deliverable Format and Detail Level: What are the specific expectations regarding the format, level of detail, and comprehensiveness of the final deliverables? Are these expectations aligned with the client’s needs and stakeholders?
+                - Client Resource Availability and Expectations: Has the client’s availability and commitment of resources (time, personnel, data) been clearly defined, and do both parties have a shared understanding of what is required from the client’s side to ensure success?
+                - Knowledge Transfer Expectations: What are the expectations regarding knowledge transfer at the end of the assessment, and are there clear plans for how key insights and recommendations will be communicated and implemented within the client’s team?
+                - Follow-on Work and Transition Plans: Are the expectations for any follow-on work, including future phases or continued consulting, clearly defined? Is there a transition plan in place to ensure smooth handover and continuity after the engagement ends?
                 """,
                 
                 'training': """
-                As a training expert, review this SOW and generate 3-5 critical questions
-                that are often missed in training projects but can cause significant issues if not addressed early.
-                
-                Focus on:
-                - Target audience skill assessment
-                - Learning outcome measurements
-                - Training materials ownership and maintenance
-                - Train-the-trainer needs
-                - Ongoing support after training
-                - Evaluation methods and success criteria
+                - As a training expert, review this Statement of Work (SOW) and generate 3-5 critical questions that are often overlooked in training projects but can lead to significant challenges if not addressed early. Focus on the following areas:
+                - Target Audience Skill Assessment: Has a thorough skills assessment of the target audience been conducted, and how will the training be tailored to accommodate different skill levels or gaps?
+                - Learning Outcome Measurements: How will the success of the training be measured, and are there clear, measurable learning outcomes defined for both individual participants and the organization as a whole?
+                - Ownership and Maintenance of Training Materials: Who will own the training materials after the engagement, and what is the plan for ongoing updates and maintenance to ensure the content remains relevant over time?
+                - Train-the-Trainer Needs: Are there clear requirements for train-the-trainer programs to ensure internal trainers are fully equipped to deliver and sustain the training over time? What is the plan for upskilling them?
+                - Ongoing Support Post-Training: What type of ongoing support (e.g., helpdesk, follow-up sessions, refresher courses) will be available to participants after the training, and how will this be structured to ensure long-term retention and application?
+                - Evaluation Methods and Success Criteria: What evaluation methods will be used to assess both learner progress and training effectiveness? Are success criteria for both individual learning and organizational impact clearly defined?
                 """,
                 
                 'infrastructure': """
-                As an infrastructure expert, review this SOW and generate 3-5 critical questions
-                that are often missed in infrastructure projects but can cause significant issues if not addressed early.
-                
-                Focus on:
-                - Environmental and system dependencies
-                - Performance requirements and capacity planning
-                - Maintenance and support expectations
-                - Disaster recovery requirements
-                - Security and compliance requirements
-                - Integration with existing infrastructure
+                - As an infrastructure expert, review this Statement of Work (SOW) and generate 3-5 critical questions that are often overlooked in infrastructure projects but can lead to significant issues if not addressed early. Focus on the following areas:
+                - Environmental and System Dependencies: Have all environmental and system dependencies been clearly identified, and are there any hidden dependencies between systems, software, or third-party services that could impact the infrastructure deployment?
+                - Performance Requirements and Capacity Planning: Are the performance requirements (e.g., response time, throughput) and capacity needs (e.g., storage, network bandwidth) well-defined? Has sufficient capacity planning been conducted to accommodate growth, traffic spikes, or unforeseen demands?
+                - Maintenance and Support Expectations: What are the long-term maintenance and support expectations, including patch management, system updates, and hardware lifecycle? Are these expectations aligned with available resources and service level agreements (SLAs)?
+                - Disaster Recovery Requirements: Are there clear disaster recovery (DR) requirements in place, including Recovery Time Objective (RTO) and Recovery Point Objective (RPO)? Does the plan account for different disaster scenarios, and is it regularly tested?
+                - Security and Compliance Requirements: How are security and compliance requirements being addressed, and have all relevant industry standards, regulations, and best practices been incorporated into the infrastructure design (e.g., GDPR, HIPAA, ISO 27001)?
+                - Integration with Existing Infrastructure: How will the new infrastructure integrate with existing systems, and are there any potential conflicts or bottlenecks that could arise during integration? Is there a strategy for smooth interoperability between the new and legacy systems?
                 """,
             }
             
             # Default prompt for other project types
             default_prompt = """
-            Review this Statement of Work and generate 3-5 critical questions about potential gaps
-            or ambiguities that should be addressed early in the project.
-            
-            Focus on:
-            - Project scope boundaries
-            - Governance and oversight
-            - Communication expectations
-            - Approval processes
-            - Success criteria
-            - Risk management
+            - Review this Statement of Work (SOW) and generate 3-5 critical questions regarding potential gaps or ambiguities that should be addressed early in the project. Focus on the following areas:
+            - Project Scope Boundaries: Are the project scope boundaries clearly defined? Are there any areas where scope creep might occur, and if so, what mechanisms are in place to manage changes and ensure alignment with project goals?
+            - Governance and Oversight: How is project governance structured, and are roles and responsibilities for oversight clearly outlined? Who is responsible for decision-making at each stage, and how are escalations handled?
+            - Communication Expectations: Have communication protocols and expectations been clearly defined? Are there specific guidelines regarding frequency, channels, and stakeholders for status updates, project reviews, and issue resolutions?
+            - Approval Processes: Is there a clearly defined approval process for key deliverables, milestones, and decisions? Are the criteria for approvals well-understood by all stakeholders, and who holds the final authority to approve or reject?
+            - Success Criteria: Are the success criteria for the project clearly articulated and measurable? Do the defined outcomes align with both stakeholder expectations and project objectives?
+
+            Risk Management: How is risk management being approached, and are potential risks identified early in the project? Are there contingency plans in place, and how will risks be tracked, communicated, and mitigated throughout the project?
             """
             
             # Select appropriate prompt or use default
