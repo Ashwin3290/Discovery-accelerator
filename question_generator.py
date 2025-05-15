@@ -390,6 +390,141 @@ class QuestionGenerator:
         
         return related
     
+    def refine_questions(self, questions: List[Dict[str, Any]], batch_size: int = 25) -> List[Dict[str, Any]]:
+        """
+        Act as a senior solution architect to refine generated questions.
+        
+        This function:
+        1. Takes questions in batches for processing
+        2. Improves question language and technical specificity
+        3. Removes nonsensical or redundant questions
+        4. Merges related questions that can be combined
+        5. Prioritizes questions based on importance and relevance
+        
+        Args:
+            questions: List of question dictionaries to refine
+            batch_size: Size of question batches to process at once (to stay within token limits)
+            
+        Returns:
+            List of refined question dictionaries
+        """
+        print(f"\n==== STARTING QUESTION REFINEMENT at {time.strftime('%Y-%m-%d %H:%M:%S')} ====")
+        print(f"Refining {len(questions)} questions in batches of {batch_size}")
+        
+        # Process questions in batches to avoid token limits
+        refined_questions = []
+        
+        # Group questions by requirement ID to ensure related questions are processed together
+        grouped_questions = defaultdict(list)
+        for q in questions:
+            req_id = q.get('requirement_id', q.get('source', 'unknown'))
+            grouped_questions[req_id].append(q)
+        
+        # Track overall stats
+        total_input_questions = len(questions)
+        total_output_questions = 0
+        
+        # Process each group
+        batch_num = 0
+        for req_id, req_questions in grouped_questions.items():
+            batch_num += 1
+            print(f"\nProcessing batch {batch_num}/{len(grouped_questions)}: {req_id} with {len(req_questions)} questions")
+            
+            # Skip processing if no questions
+            if not req_questions:
+                continue
+            
+            # Get reference to the requirement these questions are about
+            req_text = req_questions[0].get('source_text', '')
+            req_section = req_questions[0].get('section', '')
+            
+            # Create comprehensive prompt
+            prompt = f"""
+            Act as a senior solution architect with extensive experience in IT and business consulting. Review and refine these automatically generated questions to ensure they are high-quality, technically precise, and ready for stakeholder discussions.
+            
+            Context about the requirement these questions address:
+            Requirement: {req_text}
+            Section: {req_section}
+            
+            Questions to refine:
+            {json.dumps(req_questions, indent=2)}
+            
+            Your task:
+            1. IMPROVE language, clarity, and technical specificity of each question
+            2. REMOVE questions that are:
+            - Too generic or obvious
+            - Redundant with other questions
+            - Not relevant to the requirement
+            - Not technically focused enough
+            3. MERGE questions that overlap or could be more efficiently asked together
+            4. CONSOLIDATE the questions to no more than 3-5 high-value questions (unless the requirement is very complex)
+            5. PRIORITIZE questions based on technical importance and impact
+            
+            Specific guidance:
+            - Make questions more specific, focused, and technical
+            - Ensure questions lead to actionable, measurable responses
+            - Focus on questions that uncover technical details, not just business process
+            - Each question should target a specific stakeholder role (Technical Lead, Business Analyst, etc.)
+            - Questions should avoid assuming implementation details
+            - Ensure questions are phrased professionally and concisely
+            
+            Return ONLY the refined list of questions in the same JSON format as input, but with improved content.
+            Each question should have:
+            - question: The refined question text
+            - context: Updated context explaining why this question is important
+            - priority: Adjusted priority (1-3, with 1 being highest)
+            - target_stakeholder: The specific role best suited to answer this question
+            
+            Make sure to maintain any essential metadata from the original questions, such as requirement_id, source, and source_text.
+            """
+            
+            try:
+                print(f"Sending refinement prompt to Gemini API at {time.strftime('%Y-%m-%d %H:%M:%S')}...")
+                response = self.model.generate_content(prompt)
+                print(f"Received response from Gemini API at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+                
+                # Parse refined questions from response
+                refined_batch = self._parse_questions_from_response(response.text)
+                print(f"Successfully parsed {len(refined_batch)} refined questions from response")
+                
+                # Ensure essential metadata is preserved
+                for refined_q in refined_batch:
+                    # Copy metadata from original questions
+                    original_metadata = {
+                        'requirement_id': req_questions[0].get('requirement_id', ''),
+                        'source': req_questions[0].get('source', ''),
+                        'source_text': req_questions[0].get('source_text', ''),
+                        'section': req_questions[0].get('section', ''),
+                        'status': 'unanswered'
+                    }
+                    
+                    # Add metadata to refined question
+                    for key, value in original_metadata.items():
+                        if key not in refined_q:
+                            refined_q[key] = value
+                
+                # Add refined questions to result
+                refined_questions.extend(refined_batch)
+                total_output_questions += len(refined_batch)
+                
+                # Log statistics for this batch
+                print(f"Batch {batch_num} refinement: {len(req_questions)} input → {len(refined_batch)} output questions")
+                
+            except Exception as e:
+                print(f"ERROR: Failed to refine batch {batch_num}: {str(e)}")
+                traceback.print_exc()
+                # In case of error, keep original questions for this batch
+                refined_questions.extend(req_questions)
+                total_output_questions += len(req_questions)
+        
+        # Final stats
+        print(f"\n==== COMPLETED QUESTION REFINEMENT at {time.strftime('%Y-%m-%d %H:%M:%S')} ====")
+        print(f"Refinement summary: {total_input_questions} input → {total_output_questions} output questions")
+        print(f"Reduction: {round((1 - total_output_questions/total_input_questions) * 100, 1)}%")
+        
+        return refined_questions
+
+    
     def generate_initial_questions(self, sow_data: Dict[str, Any], project_name: str) -> Dict[str, Any]:
         """
         Generate initial questions based on ALL requirements, not just ambiguous ones
@@ -508,7 +643,6 @@ class QuestionGenerator:
             
             Based on this requirement from the Statement of Work for the project:
             
-            ID: {req.get('id', 'Unknown')}
             Text: {req.get('text', 'Not provided')}
             Section: {req.get('section', 'Not provided')}
             Clarity: {req.get('clarity', 'Unknown')}
@@ -638,6 +772,10 @@ class QuestionGenerator:
             questions.extend(industry_questions)
             print(f"Added {len(industry_questions)} industry-specific questions")
         
+        # 9. Refine questions
+        print(f"\n==== STARTING QUESTION REFINEMENT at {time.strftime('%Y-%m-%d %H:%M:%S')} ====")
+        questions = self.refine_questions(questions)
+        print(f"Refinement completed: {len(questions)} refined questions")
         # 9. Store questions and update result
         result["questions"] = questions
         result["summary"]["questions_count"] = len(questions)
@@ -924,6 +1062,7 @@ class QuestionGenerator:
             
             # Process follow-up questions
             followup_questions = result.get('followup_questions', [])
+            followup_questions = refine_questions(followup_questions)
             for q in followup_questions:
                 q['parent_question_id'] = question_id
                 q['source'] = original_question.get('source', '')
