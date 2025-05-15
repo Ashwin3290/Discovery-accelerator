@@ -36,7 +36,7 @@ class DiscoveryAccelerator:
         self.sow_parser = SOWParser(gemini_api_key=gemini_api_key)
         self.question_generator = QuestionGenerator(self.db, chroma_path=chroma_path,gemini_api_key=gemini_api_key)
         self.transcript_analyzer = TranscriptAnalyzer(self.db, gemini_api_key=gemini_api_key)
-    
+
     def process_documents(self, project_name: str, sow_path: str, additional_docs_paths: List[str] = None) -> Dict[str, Any]:
         print(f"\n========================================\nSTARTING DOCUMENT PROCESSING FOR: {project_name}\nTIMESTAMP: {time.strftime('%Y-%m-%d %H:%M:%S')}\n========================================")
         """
@@ -104,10 +104,35 @@ class DiscoveryAccelerator:
                     print(f"ERROR: Failed to copy document {doc_path}: {str(copy_error)}")
                     traceback.print_exc()
             
-            # Process the project directory
-            print(f"\nStep 6: Processing documents to create embeddings at {time.strftime('%Y-%m-%d %H:%M:%S')}...")
-            self.pipeline.process_project(project_name, project_dir,sow_data)
+            # NEW: Process documents and collect requirement matches
+            print(f"\nStep 6: Processing documents to create embeddings and match requirements at {time.strftime('%Y-%m-%d %H:%M:%S')}...")
+            processed_results = self.pipeline.process_project(project_name, project_dir, sow_data)
+            
+            # NEW: Merge requirement matches from all documents
+            all_requirement_matches = {}
+            if processed_results and 'document_requirement_matches' in processed_results:
+                doc_req_matches = processed_results['document_requirement_matches']
+                for req_id, matches in doc_req_matches.items():
+                    if req_id not in all_requirement_matches:
+                        all_requirement_matches[req_id] = []
+                    all_requirement_matches[req_id].extend(matches)
+            
+            # NEW: Add requirement matches to SOW data
+            sow_data['requirement_matches'] = all_requirement_matches
+            print(f"Found supporting content for {len(all_requirement_matches)} requirements")
+            
+            # Update SOW data in database with requirement matches
+            self.db.store_sow_data(project_id, sow_data)
+            print(f"Updated SOW data with requirement matches")
+            
             print(f"Document processing completed successfully at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            return {
+                'status': 'success',
+                'project_id': project_id,
+                'project_name': project_name,
+                'sow_data': sow_data
+            }
 
         except Exception as e:
             print(f"\n========================================\nDOCUMENT PROCESSING FAILED at {time.strftime('%Y-%m-%d %H:%M:%S')}\n========================================")
@@ -117,7 +142,7 @@ class DiscoveryAccelerator:
                 'status': 'error',
                 'message': str(e)
             }
-    
+
     def generate_questions(self, project_id: int, sow_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Generate questions from SOW data as a separate step from document processing

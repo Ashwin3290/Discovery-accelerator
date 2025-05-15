@@ -127,15 +127,77 @@ class DiscoveryDatabase:
         cursor = conn.cursor()
         
         try:
+            # Extract requirement matches if present
+            requirement_matches = sow_data.pop('requirement_matches', {}) if 'requirement_matches' in sow_data else {}
+            
             # Convert dictionaries to JSON strings
             sections_json = json.dumps(sow_data.get('sections', {}))
             requirements_json = json.dumps(sow_data.get('requirements', []))
             boundaries_json = json.dumps(sow_data.get('boundaries', {}))
             
+            # Add requirement_matches back to data
+            if requirement_matches:
+                sow_data['requirement_matches'] = requirement_matches
+            
+            # Check if SOW data already exists for this project
             cursor.execute(
-                "INSERT INTO sow_data (project_id, sections, requirements, boundaries) VALUES (?, ?, ?, ?)",
-                (project_id, sections_json, requirements_json, boundaries_json)
+                "SELECT id FROM sow_data WHERE project_id = ?",
+                (project_id,)
             )
+            existing_id = cursor.fetchone()
+            
+            if existing_id:
+                # Update existing SOW data
+                cursor.execute(
+                    "UPDATE sow_data SET sections = ?, requirements = ?, boundaries = ? WHERE id = ?",
+                    (sections_json, requirements_json, boundaries_json, existing_id[0])
+                )
+            else:
+                # Insert new SOW data
+                cursor.execute(
+                    "INSERT INTO sow_data (project_id, sections, requirements, boundaries) VALUES (?, ?, ?, ?)",
+                    (project_id, sections_json, requirements_json, boundaries_json)
+                )
+            
+            # Store requirement matches in a separate table if they exist
+            if requirement_matches:
+                # Check if requirement_matches table exists, if not create it
+                cursor.execute('''
+                CREATE TABLE IF NOT EXISTS requirement_matches (
+                    id INTEGER PRIMARY KEY,
+                    project_id INTEGER NOT NULL,
+                    requirement_id TEXT NOT NULL,
+                    source_file TEXT,
+                    keyword TEXT,
+                    context TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (project_id) REFERENCES projects(id)
+                )
+                ''')
+                
+                # Clear any existing matches for this project to avoid duplicates
+                cursor.execute(
+                    "DELETE FROM requirement_matches WHERE project_id = ?",
+                    (project_id,)
+                )
+                
+                # Store the new matches
+                for req_id, matches in requirement_matches.items():
+                    for match in matches:
+                        cursor.execute(
+                            """
+                            INSERT INTO requirement_matches 
+                            (project_id, requirement_id, source_file, keyword, context) 
+                            VALUES (?, ?, ?, ?, ?)
+                            """,
+                            (
+                                project_id,
+                                req_id,
+                                match.get('source_file', ''),
+                                match.get('keyword', ''),
+                                match.get('context', '')
+                            )
+                        )
             
             conn.commit()
             conn.close()
@@ -145,9 +207,9 @@ class DiscoveryDatabase:
             print(f"Error storing SOW data: {str(e)}")
             conn.close()
             return False
-    
+
     def get_project_sow_data(self, project_id: int) -> Optional[Dict[str, Any]]:
-        """Get SOW data for a project"""
+        """Get SOW data for a project including requirement matches"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -158,13 +220,12 @@ class DiscoveryDatabase:
         )
         
         row = cursor.fetchone()
-        conn.close()
-        
         if not row:
+            conn.close()
             return None
         
         # Parse JSON strings back to dictionaries
-        return {
+        result = {
             'id': row['id'],
             'project_id': row['project_id'],
             'sections': json.loads(row['sections']),
@@ -172,6 +233,35 @@ class DiscoveryDatabase:
             'boundaries': json.loads(row['boundaries']),
             'created_at': row['created_at']
         }
+        
+        # Check if requirement_matches table exists
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='requirement_matches'"
+        )
+        if cursor.fetchone():
+            # Get requirement matches for this project
+            cursor.execute(
+                "SELECT * FROM requirement_matches WHERE project_id = ?",
+                (project_id,)
+            )
+            
+            # Organize matches by requirement ID
+            requirement_matches = {}
+            for match_row in cursor.fetchall():
+                req_id = match_row['requirement_id']
+                if req_id not in requirement_matches:
+                    requirement_matches[req_id] = []
+                
+                requirement_matches[req_id].append({
+                    'source_file': match_row['source_file'],
+                    'keyword': match_row['keyword'],
+                    'context': match_row['context']
+                })
+            
+            result['requirement_matches'] = requirement_matches
+        
+        conn.close()
+        return result
     
     def store_questions(self, questions: List[Dict[str, Any]], project_id: Optional[int] = None) -> List[int]:
         """Store questions and return their IDs"""

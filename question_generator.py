@@ -389,10 +389,10 @@ class QuestionGenerator:
         related = [item[1] for item in scoring[:max_related]]
         
         return related
-
+    
     def generate_initial_questions(self, sow_data: Dict[str, Any], project_name: str) -> Dict[str, Any]:
         """
-        Generate initial questions based on SOW analysis with enhanced context and categorization
+        Generate initial questions based on ALL requirements, not just ambiguous ones
         
         Args:
             sow_data: Dictionary containing SOW sections, requirements, and boundaries
@@ -428,10 +428,10 @@ class QuestionGenerator:
         result["clear_requirements"] = categorized_reqs["clear"]
         result["summary"]["clear_count"] = len(categorized_reqs["clear"])
         
-        # 3. Prioritize ambiguous requirements
-        prioritized_reqs = self._prioritize_requirements(categorized_reqs)
-        result["ambiguous_requirements"] = prioritized_reqs
-        result["summary"]["ambiguous_count"] = len(prioritized_reqs)
+        # 3. Store and prioritize ambiguous requirements
+        prioritized_ambiguous_reqs = self._prioritize_requirements(categorized_reqs)
+        result["ambiguous_requirements"] = prioritized_ambiguous_reqs
+        result["summary"]["ambiguous_count"] = len(prioritized_ambiguous_reqs)
         
         # 4. Count by ambiguity category
         category_counts = {category: len(reqs) for category, reqs in categorized_reqs["ambiguous"].items()}
@@ -440,13 +440,19 @@ class QuestionGenerator:
         # 5. Create SOW context
         sow_context = self._create_sow_context(sow_data)
         
-        # 6. Generate questions for prioritized ambiguous requirements
-        questions = []
+        # 6. Generate questions for ALL requirements, not just ambiguous ones
+        # Sort requirements by priority (ambiguous first, then clear)
+        all_prioritized_reqs = prioritized_ambiguous_reqs + categorized_reqs["clear"]
         
+        # NEW: Try to find requirement matches from documents (if available)
+        requirement_matches = sow_data.get('requirement_matches', {})
+        
+        questions = []
         req_count = 0
-        for req in prioritized_reqs:
+        for req in all_prioritized_reqs:
             req_count += 1
-            print(f"\nProcessing ambiguous requirement {req_count}/{len(prioritized_reqs)}: {req.get('id', 'Unknown')}")
+            req_id = req.get('id', 'Unknown')
+            print(f"\nProcessing requirement {req_count}/{len(all_prioritized_reqs)}: {req_id}")
             
             # Get related requirements for context
             related_reqs = self._find_related_requirements(req, requirements)
@@ -454,68 +460,40 @@ class QuestionGenerator:
             if related_reqs:
                 related_reqs_text = "Related requirements:\n" + "\n".join([f"- {r.get('id', 'Unknown')}: {r.get('text', '')}" for r in related_reqs])
             
-            # Get additional context from ChromaDB if available
-            chroma_context = ""
-            # Get ambiguity category for better question targeting
-            ambiguity_category = "unknown"
-            for category, reqs in categorized_reqs["ambiguous"].items():
-                if req in reqs:
-                    ambiguity_category = category
-                    break
+            # NEW: Get supporting document content for this requirement (if available)
+            supporting_content = ""
+            if req_id in requirement_matches:
+                supporting_content = "Supporting document content:\n"
+                for match in requirement_matches[req_id][:5]:  # Limit to 5 matches to avoid token limits
+                    supporting_content += f"- \"{match.get('context', '')}\"\n"
             
-            # Enhanced prompt based on ambiguity category
-            # We'll customize the prompt focus based on the type of ambiguity
-            ambiguity_focus = ""
-            if ambiguity_category == "vague_language":
-                ambiguity_focus = """
-                Focus on questions that help:
-                1. Define specific, measurable criteria for vague terms
-                2. Establish clear boundaries and scope
-                3. Clarify expected outcomes and deliverables
-                """
-            elif ambiguity_category == "missing_criteria":
-                ambiguity_focus = """
-                Focus on questions that help:
-                1. Establish measurable acceptance criteria
-                2. Define what "good" looks like
-                3. Identify evaluation methods and metrics
-                4. Clarify who approves and using what criteria
-                """
-            elif ambiguity_category == "undefined_terms":
-                ambiguity_focus = """
-                Focus on questions that help:
-                1. Get precise definitions for domain-specific terminology
-                2. Identify specific items (documents, stakeholders, systems)
-                3. Establish common understanding of key terms
-                """
-            elif ambiguity_category == "scope_issues":
-                ambiguity_focus = """
-                Focus on questions that help:
-                1. Define clear boundaries of what's in vs. out of scope
-                2. Establish the required level of detail or depth
-                3. Determine specific deliverables and their format
-                4. Identify specific inclusions and exclusions
-                """
-            elif ambiguity_category == "format_missing":
-                ambiguity_focus = """
-                Focus on questions that help:
-                1. Establish required format and documentation standards
-                2. Determine level of detail required in deliverables
-                3. Clarify expectations for diagrams, models, or other artifacts
-                4. Identify specific audiences and their needs
-                """
+            # Get ambiguity category for better question targeting
+            is_ambiguous = req.get('clarity') != 'clear'
+            ambiguity_category = "unknown"
+            if is_ambiguous:
+                for category, reqs in categorized_reqs["ambiguous"].items():
+                    if req in reqs:
+                        ambiguity_category = category
+                        break
+            
+            # Enhanced prompt based on requirement type and available supporting content
+            if is_ambiguous:
+                # Define ambiguity focus based on the category
+                ambiguity_focus = self._get_ambiguity_focus(ambiguity_category)
             else:
+                # For clear requirements, focus on validation and details
                 ambiguity_focus = """
                 Focus on questions that help:
-                1. Clarify specific expectations and requirements
-                2. Establish measurable criteria for success
-                3. Define boundaries and scope
-                4. Identify key stakeholders and their needs
+                1. Validate understanding of the clear requirement
+                2. Gather additional technical details needed for implementation
+                3. Identify dependencies with other requirements
+                4. Uncover hidden assumptions
+                5. Establish success criteria and acceptance tests
                 """
             
             # Create comprehensive prompt
             prompt = f"""
-            Act as if you are a Technical Ananlyst with business context who can understand client requirements and work as mentioned with Technical Team for that you need to work upon clarifying and approcahing to the depths of the project and enquire about much more specific questions about the project in detail to reach the solution as per requirement.
+            Act as if you are a Technical Analyst with business context who can understand client requirements and work as mentioned with Technical Team for that you need to work upon clarifying and approaching to the depths of the project and enquire about much more specific questions about the project in detail to reach the solution as per requirement.
             
             Project Overview:
             {sow_context.get('overview', 'Not available')}
@@ -533,16 +511,16 @@ class QuestionGenerator:
             ID: {req.get('id', 'Unknown')}
             Text: {req.get('text', 'Not provided')}
             Section: {req.get('section', 'Not provided')}
-            Reason for ambiguity: {req.get('reason', 'Not specified')}
-            Ambiguity type: {ambiguity_category}
+            Clarity: {req.get('clarity', 'Unknown')}
+            {f"Reason for ambiguity: {req.get('reason', 'Not specified')}" if is_ambiguous else ""}
             
             {related_reqs_text}
             
-            {chroma_context}
+            {supporting_content}
             
             {ambiguity_focus}
             
-            Generate specific, and technically specificfocused questions that would help clarify this requirement.
+            Generate specific, and technically specific focused questions that would help clarify this requirement.
             Target your questions at the right stakeholders and consider:
             1. Deliverable expectations (what exactly needs to be created)
             2. Acceptance criteria (how will we know it's done correctly)
@@ -553,6 +531,11 @@ class QuestionGenerator:
             7. Understand the technical process and ask the questions accordingly for making the solution according to requirements
             8. Identify potential risks and ask questions to mitigate them
             
+            Note:
+            - Be specific and actionable
+            - Avoid generic or vague questions
+            - Do not include REQUIREMENT ID in the question text and instead mention the actual things.
+
             Format your response as a JSON array of objects with keys:
             - question: The specific question text
             - context: Brief explanation of why this question needs to be asked
@@ -579,14 +562,23 @@ class QuestionGenerator:
                 q['status'] = "unanswered"
                 q['requirement_id'] = req.get('id', 'Unknown')
                 q['section'] = req.get('section', '')
-                q['ambiguity_reason'] = req.get('reason', '')
-                 
+                if is_ambiguous:
+                    q['ambiguity_reason'] = req.get('reason', '')
+                    # Adjust priority for ambiguous requirements (make them higher priority)
+                    q['priority'] = max(1, int(q.get('priority', 3)) - 1)
+                else:
+                    # For clear requirements, keep original priority but ensure it's not too low
+                    q['priority'] = min(3, max(1, int(q.get('priority', 2))))
+                    
             questions.extend(req_questions)
         
         # 7. Generate questions for unclear boundaries
         if sow_data.get('boundaries', {}).get('unclear'):
             print(f"\n==== Processing unclear boundaries at {time.strftime('%Y-%m-%d %H:%M:%S')} ====")
             unclear_items = sow_data.get('boundaries', {}).get('unclear', [])
+            
+            # Continue with existing code for boundary questions...
+            # [Existing code for boundary questions]
             
             prompt = f"""
             You are an expert discovery analyst helping a professional services team understand project boundaries.
@@ -606,13 +598,12 @@ class QuestionGenerator:
             Known Out-of-Scope Items:
             {json.dumps(sow_data.get('boundaries', {}).get('out_of_scope', []), indent=2)}
             
-            For each unclear item, generate 2-3 specific questions that would help clarify the scope.
+            For each unclear item, generate 5 IT and technology for implementation specific questions that would help clarify the scope.
             Your questions should:
             1. Be specific and actionable
             2. Help establish clear boundaries
             3. Uncover hidden assumptions
             4. Identify potential scope creep risks
-            5. Determine ownership and responsibility
             
             Format your response as a JSON array of objects with keys:
             - item: The unclear item being addressed
@@ -663,6 +654,52 @@ class QuestionGenerator:
         print(f"==== COMPLETED QUESTION GENERATION at {time.strftime('%Y-%m-%d %H:%M:%S')} ====\n")
         
         return result
+
+    def _get_ambiguity_focus(self, ambiguity_category):
+        """Get the appropriate focus questions based on ambiguity category"""
+        focus_by_category = {
+            "vague_language": """
+            Focus on questions that help:
+            1. Define specific, measurable criteria for vague terms
+            2. Establish clear boundaries and scope
+            3. Clarify expected outcomes and deliverables
+            """,
+            "missing_criteria": """
+            Focus on questions that help:
+            1. Establish measurable acceptance criteria
+            2. Define what "good" looks like
+            3. Identify evaluation methods and metrics
+            4. Clarify who approves and using what criteria
+            """,
+            "undefined_terms": """
+            Focus on questions that help:
+            1. Get precise definitions for domain-specific terminology
+            2. Identify specific items (documents, stakeholders, systems)
+            3. Establish common understanding of key terms
+            """,
+            "scope_issues": """
+            Focus on questions that help:
+            1. Define clear boundaries of what's in vs. out of scope
+            2. Establish the required level of detail or depth
+            3. Determine specific deliverables and their format
+            4. Identify specific inclusions and exclusions
+            """,
+            "format_missing": """
+            Focus on questions that help:
+            1. Establish required format and documentation standards
+            2. Determine level of detail required in deliverables
+            3. Clarify expectations for diagrams, models, or other artifacts
+            4. Identify specific audiences and their needs
+            """
+        }
+        
+        return focus_by_category.get(ambiguity_category, """
+        Focus on questions that help:
+        1. Clarify specific expectations and requirements
+        2. Establish measurable criteria for success
+        3. Define boundaries and scope
+        4. Identify key stakeholders and their needs
+        """)
     
     def _generate_industry_specific_questions(self, project_type: str, sow_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Generate industry-specific questions based on project type"""

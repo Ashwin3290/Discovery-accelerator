@@ -235,7 +235,8 @@ class SOWParser:
         
         prompt = f"""
         Extract all specific requirements from these SOW sections.
-        Be comprehensive - consider only technical requirements and any statement that implies or connect to that to be done as a requirement.
+        Be comprehensive - consider only IT technical requirements and any statement that implies or connect to that to be done as a requirement.
+        You have to think like a Solution Architect in IT industry where your job is related to the technology and actual implementation related when reading the SOW
         
         For each requirement:
         1. Provide a short ID (e.g., REQ-01)

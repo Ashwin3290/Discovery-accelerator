@@ -35,6 +35,8 @@ from comtypes import client
 import google.generativeai as genai
 from PIL import Image
 import io
+import re
+import json
 import gc
 
 # Set up Gemini API
@@ -699,8 +701,7 @@ class ProjectDataPipeline:
         except Exception as e:
             self.logger.error(f"Error retrieving document content: {str(e)}")
             return "Error retrieving content"
-
-    def parse_file(self,file_path,sow_data):
+    def parse_file(self, file_path, sow_data):
         print(f"\nProcessing file: {file_path}")
         try:
             self.logger.info(f"Processing file: {file_path}")
@@ -714,17 +715,30 @@ class ProjectDataPipeline:
                     print(f"Conversion successful: {pdf_path}")
             else:
                 pdf_path = file_path if file_path.lower().endswith('.pdf') else None
-        
+            
             # Process based on file type
             if pdf_path and pdf_path.lower().endswith('.pdf'):
                 try:
-                    gemini_extracted_info = extract_text_with_gemini(pdf_path, self.gemini_api_key,sow_data)
+                    # Extract requirements from SOW data
+                    requirements = sow_data.get('requirements', [])
                     
-                    # Add Gemini's extraction as a special document
-                    return gemini_extracted_info
+                    # Extract content with Gemini
+                    extracted_info = extract_text_with_gemini(pdf_path, self.gemini_api_key, sow_data)
+                    
+                    # NEW: Match requirements to document content
+                    requirement_matches = match_requirements_to_document(requirements, extracted_info)
+                    
+                    # Add matches to the extracted info
+                    result = {
+                        'extracted_content': extracted_info,
+                        'requirement_matches': requirement_matches,
+                        'source_file': file_path
+                    }
+                    
+                    return result
                 except Exception as e:
                     self.logger.error(f"Error processing with Gemini: {str(e)}")      
-            
+                
         except Exception as e:
             self.logger.error(f"Error processing file {file_path}: {str(e)}")
         finally:
@@ -1261,8 +1275,6 @@ def convert_ppt_to_pdf(input_file, output_file=None):
     """Convert a PowerPoint file to PDF"""
     convert(input_file, output_file)
 
-
-
 def convert_to_pdf(file_path):
     """Convert a document (PPTX or DOCX) to PDF"""
     extension = os.path.splitext(file_path)[1].lower()
@@ -1277,7 +1289,83 @@ def convert_to_pdf(file_path):
     
     return output_file
 
-def extract_text_with_gemini(pdf_path, gemini_api_key,sow_data):
+def match_requirements_to_document( requirements, document_content):
+    """Match requirements to document content to find supporting sections"""
+    requirement_matches = {}
+    
+    try:
+        # Convert document content to string if needed
+        if isinstance(document_content, dict):
+            document_text = json.dumps(document_content)
+        else:
+            document_text = str(document_content)
+        
+        for req in requirements:
+            req_id = req.get('id', '')
+            req_text = req.get('text', '')
+            
+            # Skip empty requirements
+            if not req_text.strip():
+                continue
+            
+            # Generate keywords and phrases from the requirement
+            keywords = extract_keywords(req_text)
+            
+            # Find matches in document text
+            matches = []
+            for keyword in keywords:
+                # Skip very short keywords (likely to cause false positives)
+                if len(keyword) < 4:
+                    continue
+                    
+                # Find keyword occurrences
+                pattern = re.compile(r'(.{0,100}' + re.escape(keyword) + r'.{0,100})', re.IGNORECASE)
+                for match in pattern.finditer(document_text):
+                    # Extract the context around the keyword
+                    context = match.group(1).strip()
+                    if context:
+                        matches.append({
+                            'keyword': keyword,
+                            'context': context
+                        })
+            
+            # Store matches for this requirement
+            if matches:
+                requirement_matches[req_id] = matches
+        
+        return requirement_matches
+    
+    except Exception as e:
+        print(f"Error matching requirements to document: {str(e)}")
+        return {}
+    
+def extract_keywords(text):
+    """Extract keywords and phrases from requirement text"""
+    keywords = []
+    
+    # Remove common stop words
+    stop_words = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'shall', 'will', 'should', 'must']
+    
+    # Simple keyword extraction
+    words = text.lower().split()
+    filtered_words = [word.strip(',.()[]{}:;\'\"') for word in words if word.lower() not in stop_words and len(word) > 3]
+    keywords.extend(filtered_words)
+    
+    # Extract phrases (2-3 word combinations)
+    for i in range(len(words) - 1):
+        phrase = words[i] + ' ' + words[i+1]
+        keywords.append(phrase.strip(',.()[]{}:;\'\"'))
+    
+    for i in range(len(words) - 2):
+        phrase = words[i] + ' ' + words[i+1] + ' ' + words[i+2]
+        keywords.append(phrase.strip(',.()[]{}:;\'\"'))
+    
+    # Remove duplicates
+    keywords = list(set(keywords))
+    
+    return keywords
+
+def extract_text_with_gemini(pdf_path, gemini_api_key, sow_data):
     """Use Gemini to extract structured information from a PDF"""
     genai.configure(api_key=gemini_api_key)
     
@@ -1288,11 +1376,26 @@ def extract_text_with_gemini(pdf_path, gemini_api_key,sow_data):
     with open(pdf_path, 'rb') as f:
         pdf_bytes = f.read()
     
-    # Create a prompt that extracts key information
-    prompt = """
-    Extract all the text and the understanding from it.
-    for diagrams properly extract the text and the understanding from it.
-    Format the output as a structured JSON with clear sections.
+    # Extract requirements information for context
+    requirements_text = ""
+    if sow_data and 'requirements' in sow_data:
+        for req in sow_data['requirements'][:10]:  # Limit to avoid token limits
+            requirements_text += f"- {req.get('id', '')}: {req.get('text', '')}\n"
+    
+    # Create a prompt that extracts key information and tries to match requirements
+    prompt = f"""
+    Extract all the text and the understanding from this document.
+    For diagrams properly extract the text and the understanding from it.
+    
+    Additionally, I'm providing a list of key requirements from the SOW. 
+    In your analysis, please identify any content in this document that relates to these requirements:
+    
+    {requirements_text}
+    
+    Format the output as structured JSON with:
+    1. Clear sections of the document content
+    2. Any key information related to the requirements
+    3. Important technical details and specifications
     """
     
     # Create the image part from PDF bytes (first page)
