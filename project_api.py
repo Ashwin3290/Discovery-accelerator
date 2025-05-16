@@ -210,7 +210,8 @@ async def list_projects():
     try:
         print("API: Calling list_projects method...")
         projects = pipeline.list_projects()
-        print(f"API: Received {len(projects)} projects: {projects}")
+        if projects:
+            print(f"API: Received {len(projects)} projects: {projects}")
         
         # Validate and sanitize project names
         project_names = []

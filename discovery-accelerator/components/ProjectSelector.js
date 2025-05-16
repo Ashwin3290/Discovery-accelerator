@@ -31,7 +31,7 @@ export default function ProjectSelector({ onSelectProject }) {
     };
 
     loadProjects();
-  }, [onSelectProject]);
+  }, []);
 
   const handleProjectChange = (e) => {
     const projectName = e.target.value;
