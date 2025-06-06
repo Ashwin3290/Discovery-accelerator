@@ -16,11 +16,16 @@ import {
   BarChart, 
   FileText, 
   MoreHorizontal, 
-  Loader2 
+  Loader2,
+  Upload,
+  Download,
+  Settings
 } from 'lucide-react';
 import ColoredHeader from '../../components/ColoredHeader';
 import StylableContainer from '../../components/StylableContainer';
-import { fetchProjects } from '../../lib/api';
+import AdditionalDocumentUpload from '../../components/AdditionalDocumentUpload';
+import AnswersBySource from '../../components/AnswersBySource';
+import { fetchProjects, fetchProjectProgress } from '../../lib/api';
 
 export default function ProjectsPage() {
   const router = useRouter();
@@ -32,6 +37,10 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
   const [showFilters, setShowFilters] = useState(false);
+  const [showAdditionalDocs, setShowAdditionalDocs] = useState(false);
+  const [showAnswersBySource, setShowAnswersBySource] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [selectedProjectName, setSelectedProjectName] = useState(null);
 
 // Fetch projects on component mount
 useEffect(() => {
@@ -177,6 +186,33 @@ useEffect(() => {
   // Handle new project click
   const handleNewProject = () => {
     router.push('/start-discovery');
+  };
+
+  // Handle additional documents upload
+  const handleAdditionalDocs = (projectId, projectName) => {
+    setSelectedProjectId(projectId);
+    setSelectedProjectName(projectName);
+    setShowAdditionalDocs(true);
+  };
+
+  // Handle view answers by source
+  const handleViewAnswersBySource = (projectId) => {
+    setSelectedProjectId(projectId);
+    setShowAnswersBySource(true);
+  };
+
+  // Handle additional document processing complete
+  const handleProcessingComplete = (result) => {
+    console.log('Processing completed:', result);
+    // Optionally refresh project data or show notification
+  };
+
+  // Close modals
+  const closeModals = () => {
+    setShowAdditionalDocs(false);
+    setShowAnswersBySource(false);
+    setSelectedProjectId(null);
+    setSelectedProjectName(null);
   };
 
   return (
@@ -397,6 +433,20 @@ useEffect(() => {
                           >
                             <BarChart size={18} />
                           </Link>
+                          <button
+                            onClick={() => handleAdditionalDocs(project.id, project.name)}
+                            className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300"
+                            title="Add Documents"
+                          >
+                            <Upload size={18} />
+                          </button>
+                          <button
+                            onClick={() => handleViewAnswersBySource(project.id)}
+                            className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300"
+                            title="View Answers by Source"
+                          >
+                            <Download size={18} />
+                          </button>
                           <div className="relative inline-block text-left">
                             <button
                               className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
@@ -415,6 +465,24 @@ useEffect(() => {
           </div>
         )}
       </StylableContainer>
+
+      {/* Additional Documents Modal */}
+      {showAdditionalDocs && selectedProjectId && (
+        <AdditionalDocumentUpload
+          projectId={selectedProjectId}
+          projectName={selectedProjectName}
+          onProcessingComplete={handleProcessingComplete}
+          onClose={closeModals}
+        />
+      )}
+
+      {/* Answers by Source Modal */}
+      {showAnswersBySource && selectedProjectId && (
+        <AnswersBySource
+          projectId={selectedProjectId}
+          onClose={closeModals}
+        />
+      )}
     </div>
   );
 }

@@ -12,7 +12,9 @@ import {
   Users,
   CalendarClock,
   Folder,
-  Bell
+  Bell,
+  Upload,
+  BarChart
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -23,8 +25,9 @@ export default function Sidebar() {
     { name: 'Projects', path: '/projects', icon: <Folder size={20} /> },
     { name: 'Process Transcripts', path: '/process-transcripts', icon: <Mic size={20} /> },
     { name: 'View Questions', path: '/view-questions', icon: <HelpCircle size={20} /> },
+    { name: 'Additional Documents', path: '/additional-documents', icon: <Upload size={20} /> },
     { name: 'Discovery Status', path: '/discovery-status', icon: <Gauge size={20} /> },
-    { name: 'Reports', path: '/reports', icon: <FileText size={20} /> },
+    { name: 'Reports', path: '/reports', icon: <BarChart size={20} /> },
   ];
 
   const secondaryNavItems = [

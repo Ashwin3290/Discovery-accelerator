@@ -722,8 +722,13 @@ class ProjectDataPipeline:
                     # Extract requirements from SOW data
                     requirements = sow_data.get('requirements', [])
                     
-                    # Extract content with Gemini
-                    extracted_info = extract_text_with_gemini(pdf_path, self.gemini_api_key, sow_data)
+                    # Extract content with Gemini using chunking
+                    extracted_info = extract_text_with_gemini_chunked(
+                        pdf_path, 
+                        self.gemini_api_key, 
+                        sow_data,
+                        max_pages_per_chunk=10  # You can make this configurable
+                    )
                     
                     # NEW: Match requirements to document content
                     requirement_matches = match_requirements_to_document(requirements, extracted_info)
@@ -732,7 +737,8 @@ class ProjectDataPipeline:
                     result = {
                         'extracted_content': extracted_info,
                         'requirement_matches': requirement_matches,
-                        'source_file': file_path
+                        'source_file': file_path,
+                        'processing_method': 'chunked_extraction' if isinstance(extracted_info, dict) and extracted_info.get('extraction_type', '').startswith('chunked') else 'single_extraction'
                     }
                     
                     return result
@@ -1339,6 +1345,265 @@ def match_requirements_to_document( requirements, document_content):
     except Exception as e:
         print(f"Error matching requirements to document: {str(e)}")
         return {}
+
+def chunk_pdf(pdf_path, max_pages_per_chunk=20):
+    """
+    Split a PDF into smaller chunks based on page count
+    
+    Args:
+        pdf_path: Path to the PDF file
+        max_pages_per_chunk: Maximum number of pages per chunk (default: 20)
+    
+    Returns:
+        List of temporary PDF file paths for each chunk
+    """
+    chunk_paths = []
+    
+    try:
+        # Open the source PDF
+        source_doc = fitz.open(pdf_path)
+        total_pages = len(source_doc)
+        
+        print(f"PDF has {total_pages} pages. Creating chunks of {max_pages_per_chunk} pages each.")
+        
+        # If PDF is small enough, return original path
+        if total_pages <= max_pages_per_chunk:
+            source_doc.close()
+            return [pdf_path]
+        
+        # Create chunks
+        chunk_number = 1
+        for start_page in range(0, total_pages, max_pages_per_chunk):
+            end_page = min(start_page + max_pages_per_chunk - 1, total_pages - 1)
+            
+            # Create a new PDF for this chunk
+            chunk_doc = fitz.open()
+            
+            # Copy pages to the chunk
+            for page_num in range(start_page, end_page + 1):
+                chunk_doc.insert_pdf(source_doc, from_page=page_num, to_page=page_num)
+            
+            # Save the chunk to a temporary file
+            temp_dir = tempfile.gettempdir()
+            original_name = os.path.splitext(os.path.basename(pdf_path))[0]
+            chunk_filename = f"{original_name}_chunk_{chunk_number}_pages_{start_page + 1}-{end_page + 1}.pdf"
+            chunk_path = os.path.join(temp_dir, chunk_filename)
+            
+            chunk_doc.save(chunk_path)
+            chunk_doc.close()
+            
+            chunk_paths.append(chunk_path)
+            print(f"Created chunk {chunk_number}: pages {start_page + 1}-{end_page + 1} -> {chunk_path}")
+            
+            chunk_number += 1
+        
+        source_doc.close()
+        
+    except Exception as e:
+        print(f"Error chunking PDF {pdf_path}: {str(e)}")
+        # If chunking fails, return original path
+        return [pdf_path]
+    
+    return chunk_paths
+
+def extract_text_with_gemini_chunked(pdf_path, gemini_api_key, sow_data, max_pages_per_chunk=20):
+    """
+    Use Gemini to extract structured information from a PDF with chunking support
+    
+    Args:
+        pdf_path: Path to the PDF file
+        gemini_api_key: Gemini API key
+        sow_data: SOW data containing requirements
+        max_pages_per_chunk: Maximum pages per chunk before splitting
+    
+    Returns:
+        Combined extraction results from all chunks
+    """
+    genai.configure(api_key=gemini_api_key)
+    model = genai.GenerativeModel('gemini-2.0-flash')
+    
+    # First, check if PDF needs chunking
+    try:
+        with fitz.open(pdf_path) as doc:
+            total_pages = len(doc)
+    except Exception as e:
+        print(f"Error reading PDF {pdf_path}: {str(e)}")
+        return {"error": f"Could not read PDF: {str(e)}"}
+    
+    print(f"PDF {pdf_path} has {total_pages} pages")
+    
+    # Create chunks if necessary
+    chunk_paths = chunk_pdf(pdf_path, max_pages_per_chunk)
+    
+    # Extract requirements information for context
+    requirements_text = ""
+    if sow_data and 'requirements' in sow_data:
+        for req in sow_data['requirements'][:10]:  # Limit to avoid token limits
+            requirements_text += f"- {req.get('id', '')}: {req.get('text', '')}\n"
+    
+    # Process each chunk
+    all_extractions = []
+    cleanup_paths = []  # Track temporary files for cleanup
+    
+    try:
+        for i, chunk_path in enumerate(chunk_paths):
+            print(f"Processing chunk {i + 1}/{len(chunk_paths)}: {chunk_path}")
+            
+            # Create chunk-specific prompt
+            chunk_prompt = f"""
+            Extract all the text and understanding from this document chunk (part {i + 1} of {len(chunk_paths)}).
+            For diagrams, properly extract the text and understanding from them.
+            
+            {"This is part of a larger document that was split into chunks for processing." if len(chunk_paths) > 1 else ""}
+            
+            Additionally, I'm providing a list of key requirements from the SOW. 
+            In your analysis, please identify any content in this document chunk that relates to these requirements:
+            
+            {requirements_text}
+            
+            Format the output as structured JSON with:
+            1. Clear sections of the document content
+            2. Any key information related to the requirements
+            3. Important technical details and specifications
+            4. Page range information for this chunk
+            
+            Begin your response with valid JSON.
+            """
+            
+            try:
+                # Read PDF chunk as bytes
+                with open(chunk_path, 'rb') as f:
+                    pdf_bytes = f.read()
+                
+                # Process with Gemini
+                response = model.generate_content([
+                    chunk_prompt,
+                    {'mime_type': 'application/pdf', 'data': pdf_bytes}
+                ])
+                
+                # Store the extraction result with chunk metadata
+                chunk_result = {
+                    'chunk_number': i + 1,
+                    'total_chunks': len(chunk_paths),
+                    'chunk_file': os.path.basename(chunk_path),
+                    'extraction': response.text,
+                    'source_pdf': pdf_path
+                }
+                
+                all_extractions.append(chunk_result)
+                print(f"Successfully processed chunk {i + 1}")
+                
+                # Add delay between API calls to avoid rate limits
+                if i < len(chunk_paths) - 1:  # Don't delay after the last chunk
+                    time.sleep(2)
+                
+            except Exception as e:
+                print(f"Error processing chunk {i + 1} ({chunk_path}): {str(e)}")
+                error_result = {
+                    'chunk_number': i + 1,
+                    'total_chunks': len(chunk_paths),
+                    'chunk_file': os.path.basename(chunk_path),
+                    'error': str(e),
+                    'source_pdf': pdf_path
+                }
+                all_extractions.append(error_result)
+            
+            # Mark temporary files for cleanup (but not the original file)
+            if chunk_path != pdf_path:
+                cleanup_paths.append(chunk_path)
+    
+    finally:
+        # Cleanup temporary chunk files
+        for temp_path in cleanup_paths:
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                    print(f"Cleaned up temporary file: {temp_path}")
+            except Exception as e:
+                print(f"Warning: Could not clean up temporary file {temp_path}: {str(e)}")
+    
+    # If we processed multiple chunks, create a combined summary
+    if len(chunk_paths) > 1:
+        print("Creating combined summary from all chunks...")
+        try:
+            combined_result = create_combined_summary(all_extractions, model, requirements_text)
+            return combined_result
+        except Exception as e:
+            print(f"Error creating combined summary: {str(e)}")
+            # Return individual chunks if summary fails
+            return {
+                'extraction_type': 'chunked_individual',
+                'total_chunks': len(chunk_paths),
+                'chunks': all_extractions,
+                'source_pdf': pdf_path
+            }
+    else:
+        # Single chunk or original file, return the extraction directly
+        return all_extractions[0]['extraction'] if all_extractions else {"error": "No extraction results"}
+
+def create_combined_summary(chunk_extractions, model, requirements_text):
+    """
+    Create a combined summary from multiple chunk extractions
+    """
+    try:
+        # Combine all chunk extractions
+        combined_content = ""
+        successful_chunks = []
+        
+        for chunk in chunk_extractions:
+            if 'extraction' in chunk:
+                combined_content += f"\n--- CHUNK {chunk['chunk_number']} ({chunk['chunk_file']}) ---\n"
+                combined_content += chunk['extraction']
+                combined_content += "\n"
+                successful_chunks.append(chunk['chunk_number'])
+            elif 'error' in chunk:
+                combined_content += f"\n--- CHUNK {chunk['chunk_number']} ERROR ---\n"
+                combined_content += f"Error: {chunk['error']}\n"
+        
+        # Create summary prompt
+        summary_prompt = f"""
+        The following content was extracted from a large PDF document that was split into {len(chunk_extractions)} chunks.
+        Please create a comprehensive, unified summary that combines all the information coherently.
+        
+        Remove redundancies, organize the information logically, and ensure the final summary captures all key points.
+        
+        Pay special attention to these SOW requirements when creating the summary:
+        {requirements_text}
+        
+        EXTRACTED CONTENT FROM ALL CHUNKS:
+        {combined_content}
+        
+        Please provide a unified, structured summary as JSON with:
+        1. Overall document summary
+        2. Key sections and their content
+        3. Requirements mapping (which content relates to which SOW requirements)
+        4. Technical specifications and important details
+        5. Processing metadata (successful chunks, any errors)
+        
+        Begin your response with valid JSON.
+        """
+        
+        # Generate combined summary
+        response = model.generate_content(summary_prompt)
+        
+        return {
+            'extraction_type': 'chunked_combined',
+            'total_chunks': len(chunk_extractions),
+            'successful_chunks': successful_chunks,
+            'combined_summary': response.text,
+            'individual_chunks': chunk_extractions,
+            'source_pdf': chunk_extractions[0]['source_pdf'] if chunk_extractions else 'unknown'
+        }
+        
+    except Exception as e:
+        print(f"Error in create_combined_summary: {str(e)}")
+        # Return individual chunks if summary fails
+        return {
+            'extraction_type': 'chunked_individual_fallback',
+            'total_chunks': len(chunk_extractions),
+            'error': f"Summary creation failed: {str(e)}",
+            'chunks': chunk_extractions
+        }
     
 def extract_keywords(text):
     """Extract keywords and phrases from requirement text"""
@@ -1380,7 +1645,7 @@ def extract_text_with_gemini(pdf_path, gemini_api_key, sow_data):
     # Extract requirements information for context
     requirements_text = ""
     if sow_data and 'requirements' in sow_data:
-        for req in sow_data['requirements'][:10]:  # Limit to avoid token limits
+        for req in sow_data['requirements']:  # Limit to avoid token limits
             requirements_text += f"- {req.get('id', '')}: {req.get('text', '')}\n"
     
     # Create a prompt that extracts key information and tries to match requirements

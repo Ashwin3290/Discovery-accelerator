@@ -1,76 +1,60 @@
 // ProjectSelector.js
 'use client';
 
-import { useState, useEffect } from 'react';
-import { fetchProjects } from '../lib/api';
+import { ChevronDown, Loader2 } from 'lucide-react';
 
-export default function ProjectSelector({ onSelectProject }) {
-  const [projects, setProjects] = useState([]);
-  const [selectedProject, setSelectedProject] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        setLoading(true);
-        const data = await fetchProjects();
-        setProjects(data.projects || []);
-        
-        // Select first project by default if exists
-        if (data.projects && data.projects.length > 0) {
-          setSelectedProject(data.projects[0]);
-          onSelectProject && onSelectProject(data.projects[0], 1); // Assume ID is 1 for first project
-        }
-      } catch (err) {
-        console.error('Error loading projects:', err);
-        setError('Failed to load projects. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadProjects();
-  }, []);
+export default function ProjectSelector({ 
+  projects = [], 
+  selectedProjectId = null, 
+  onProjectSelect, 
+  loading = false,
+  placeholder = "Select a project..."
+}) {
+  const selectedProject = projects.find(p => p.id === selectedProjectId);
 
   const handleProjectChange = (e) => {
-    const projectName = e.target.value;
-    setSelectedProject(projectName);
-    
-    // Find project ID (simple assumption that IDs start from 1)
-    const projectId = projects.findIndex(p => p === projectName) + 1;
-    onSelectProject && onSelectProject(projectName, projectId);
+    const projectId = parseInt(e.target.value);
+    if (projectId && onProjectSelect) {
+      onProjectSelect(projectId);
+    }
   };
 
   if (loading) {
-    return <div className="py-2">Loading projects...</div>;
-  }
-
-  if (error) {
-    return <div className="text-red-500 py-2">{error}</div>;
+    return (
+      <div className="flex items-center py-2 text-gray-600 dark:text-gray-400">
+        <Loader2 size={16} className="mr-2 animate-spin" />
+        Loading projects...
+      </div>
+    );
   }
 
   if (projects.length === 0) {
-    return <div className="py-2 text-amber-600">No projects found. Please start a discovery process first.</div>;
+    return (
+      <div className="py-2 text-amber-600 dark:text-amber-400">
+        No projects found. Please start a discovery process first.
+      </div>
+    );
   }
 
   return (
-    <div className="mb-4">
-      <label htmlFor="project-select" className="block text-sm font-medium text-gray-700 mb-1">
-        Select Project
-      </label>
+    <div className="relative">
       <select
-        id="project-select"
-        value={selectedProject}
+        value={selectedProjectId || ''}
         onChange={handleProjectChange}
-        className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+        className="w-full p-3 pr-10 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 appearance-none cursor-pointer"
       >
-        {projects.map((project, index) => (
-          <option key={index} value={project}>
-            {project}
+        <option value="">{placeholder}</option>
+        {projects.map((project) => (
+          <option key={project.id} value={project.id}>
+            {project.name}
           </option>
         ))}
       </select>
+      
+      {/* Custom dropdown arrow */}
+      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+        <ChevronDown size={16} className="text-gray-400" />
+      </div>
     </div>
   );
 }

@@ -6,9 +6,12 @@ import ColoredHeader from '../../components/ColoredHeader';
 import StylableContainer from '../../components/StylableContainer';
 import ProjectSelector from '../../components/ProjectSelector';
 import { fetchQuestions, generateQuestions } from '../../lib/api';
+import { fetchProjects } from '../../lib/api';
+
 
 export default function ViewQuestionsPage() {
   const router = useRouter();
+  const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('All');
@@ -19,9 +22,34 @@ export default function ViewQuestionsPage() {
   const [selectedQuestion, setSelectedQuestion] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingResult, setGeneratingResult] = useState(null);
+  const [showAdditionalDocs, setShowAdditionalDocs] = useState(false);
 
-  const handleProjectSelect = (projectName, projectId) => {
-    setSelectedProject(projectName);
+  // Load projects on mount
+  useEffect(() => {
+    const loadProjects = async () => {
+      try {
+        const response = await fetchProjects();
+        if (response && response.status === 'success') {
+          const enhancedProjects = response.projects.map((project, index) => {
+            let id = index + 1;
+            const idMatch = project.match(/[^a-zA-Z0-9](\d+)$/);
+            if (idMatch) {
+              id = parseInt(idMatch[1]);
+            }
+            return { id: id, name: project };
+          });
+          setProjects(enhancedProjects);
+        }
+      } catch (err) {
+        console.error('Error loading projects:', err);
+      }
+    };
+    loadProjects();
+  }, []);
+
+  const handleProjectSelect = (projectId) => {
+    const project = projects.find(p => p.id === projectId);
+    setSelectedProject(project?.name);
     setSelectedProjectId(projectId);
     setSelectedQuestionId(null);
     setSelectedQuestion(null);
@@ -103,6 +131,26 @@ export default function ViewQuestionsPage() {
     }
   };
 
+  // Handle additional document processing complete
+  const handleProcessingComplete = (result) => {
+    setShowAdditionalDocs(false);
+    // Reload questions to reflect any new answers
+    if (selectedProjectId) {
+      const loadQuestions = async () => {
+        try {
+          const status = statusFilter !== 'All' ? statusFilter.toLowerCase().replace(' ', '_') : null;
+          const response = await fetchQuestions(selectedProjectId, status);
+          if (response && response.status === 'success') {
+            setQuestions(response.questions || []);
+          }
+        } catch (err) {
+          console.error('Error reloading questions:', err);
+        }
+      };
+      loadQuestions();
+    }
+  };
+
   // Format status display with appropriate styling
   const formatStatusDisplay = (status) => {
     if (status === 'unanswered') {
@@ -160,8 +208,38 @@ export default function ViewQuestionsPage() {
       />
 
       <StylableContainer>
-        {/* Project selector */}
-        <ProjectSelector onSelectProject={handleProjectSelect} />
+        {/* Project selector and actions */}
+        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between mb-6">
+          <div className="flex-1 max-w-md">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Select Project
+            </label>
+            <ProjectSelector 
+              projects={projects}
+              selectedProjectId={selectedProjectId}
+              onProjectSelect={handleProjectSelect}
+            />
+          </div>
+          
+          {/* {selectedProject && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowAdditionalDocs(true)}
+                className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+              >
+                <Upload size={16} className="mr-2" />
+                Add Documents
+              </button>
+              <button
+                onClick={() => router.push(`/additional-documents?projectId=${selectedProjectId}`)}
+                className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+              >
+                <Plus size={16} className="mr-2" />
+                Manage Docs
+              </button>
+            </div>
+          )} */}
+        </div>
 
         {selectedProject && (
           <>
@@ -377,6 +455,16 @@ export default function ViewQuestionsPage() {
           </>
         )}
       </StylableContainer>
+
+      {/* Additional Documents Modal */}
+      {showAdditionalDocs && selectedProjectId && (
+        <AdditionalDocumentUpload
+          projectId={selectedProjectId}
+          projectName={selectedProject}
+          onProcessingComplete={handleProcessingComplete}
+          onClose={() => setShowAdditionalDocs(false)}
+        />
+      )}
     </div>
   );
 }

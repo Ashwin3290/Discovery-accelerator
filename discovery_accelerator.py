@@ -12,6 +12,7 @@ from question_generator import QuestionGenerator
 from transcript_analyzer import TranscriptAnalyzer
 from discovery_db import DiscoveryDatabase
 from file_processing import ProjectDataPipeline
+from additional_doc import AdditionalDocumentProcessor
 
 class DiscoveryAccelerator:
     def __init__(self, base_dir: str, chroma_path: str = None, db_path: str = 'discovery.db', gemini_api_key: str = None, inference_api_url: str = "http://localhost:5000"):
@@ -36,6 +37,9 @@ class DiscoveryAccelerator:
         self.sow_parser = SOWParser(gemini_api_key=gemini_api_key)
         self.question_generator = QuestionGenerator(self.db, chroma_path=chroma_path,gemini_api_key=gemini_api_key)
         self.transcript_analyzer = TranscriptAnalyzer(self.db, gemini_api_key=gemini_api_key)
+        self.additional_doc_processor = AdditionalDocumentProcessor(
+            self.db, gemini_api_key=gemini_api_key, chroma_path=chroma_path
+        )
 
     def process_documents(self, project_name: str, sow_path: str, additional_docs_paths: List[str] = None) -> Dict[str, Any]:
         print(f"\n========================================\nSTARTING DOCUMENT PROCESSING FOR: {project_name}\nTIMESTAMP: {time.strftime('%Y-%m-%d %H:%M:%S')}\n========================================")
@@ -460,6 +464,271 @@ class DiscoveryAccelerator:
                 'new_information': new_info
             }
         
+        except Exception as e:
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+
+    def process_additional_documents(self, project_id: int, document_paths: List[str]) -> Dict[str, Any]:
+        """
+        Process additional documents for an existing project
+        
+        This method:
+        1. Extracts content from new documents
+        2. Tries to answer existing unanswered questions
+        3. Generates new questions based on document content
+        4. Updates the project's question database
+        
+        Args:
+            project_id: ID of the existing project
+            document_paths: List of paths to additional documents
+            
+        Returns:
+            Dictionary with processing results
+        """
+        print(f"\n========================================\nPROCESSING ADDITIONAL DOCUMENTS FOR PROJECT: {project_id}\nTIMESTAMP: {time.strftime('%Y-%m-%d %H:%M:%S')}\n========================================")
+        
+        try:
+            # Validate project exists
+            conn = self.db._get_connection()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+            project = cursor.fetchone()
+            conn.close()
+            
+            if not project:
+                return {
+                    'status': 'error',
+                    'message': f'Project with ID {project_id} not found'
+                }
+            
+            project_name = project['name']
+            print(f"Processing additional documents for project: {project_name}")
+            
+            # Validate document paths
+            valid_paths = []
+            for doc_path in document_paths:
+                if os.path.exists(doc_path):
+                    valid_paths.append(doc_path)
+                    print(f"✓ Found document: {os.path.basename(doc_path)}")
+                else:
+                    print(f"✗ Document not found: {doc_path}")
+            
+            if not valid_paths:
+                return {
+                    'status': 'error',
+                    'message': 'No valid document paths provided'
+                }
+            
+            # Copy documents to project directory for processing
+            project_dir = os.path.join(self.base_dir, project_name)
+            additional_docs_dir = os.path.join(project_dir, "additional_documents")
+            os.makedirs(additional_docs_dir, exist_ok=True)
+            
+            copied_paths = []
+            for doc_path in valid_paths:
+                filename = os.path.basename(doc_path)
+                dest_path = os.path.join(additional_docs_dir, filename)
+                
+                # Copy file
+                try:
+                    with open(doc_path, 'rb') as src_file:
+                        with open(dest_path, 'wb') as dst_file:
+                            dst_file.write(src_file.read())
+                    copied_paths.append(dest_path)
+                    print(f"Copied document to: {dest_path}")
+                except Exception as copy_error:
+                    print(f"ERROR: Failed to copy document {doc_path}: {str(copy_error)}")
+                    continue
+            
+            if not copied_paths:
+                return {
+                    'status': 'error',
+                    'message': 'Failed to copy any documents for processing'
+                }
+            
+            # Process the additional documents
+            print(f"Processing {len(copied_paths)} additional documents...")
+            result = self.additional_doc_processor.process_additional_documents(
+                project_id=project_id,
+                document_paths=copied_paths
+            )
+            
+            # Add project name to result
+            if result.get('status') == 'success':
+                result['project_name'] = project_name
+                
+                # Get updated discovery status
+                discovery_status = self.db.get_discovery_status(project_id)
+                result['discovery_status'] = discovery_status
+                
+                print(f"✓ Successfully processed additional documents")
+                print(f"  - Documents processed: {result.get('documents_processed', 0)}")
+                print(f"  - Answers found: {result.get('answers_found', 0)}")
+                print(f"  - New questions generated: {result.get('new_questions_generated', 0)}")
+            
+            return result
+            
+        except Exception as e:
+            print(f"\n========================================\nADDITIONAL DOCUMENT PROCESSING FAILED at {time.strftime('%Y-%m-%d %H:%M:%S')}\n========================================")
+            print(f"ERROR: {str(e)}")
+            traceback.print_exc()
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    def get_project_progress_summary(self, project_id: int) -> Dict[str, Any]:
+        """
+        Get a comprehensive summary of project discovery progress including additional documents
+        
+        Args:
+            project_id: ID of the project
+            
+        Returns:
+            Dictionary with comprehensive project progress information
+        """
+        try:
+            # Get basic discovery status
+            discovery_status = self.db.get_discovery_status(project_id)
+            
+            # Get project info
+            conn = self.db._get_connection()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+            project = cursor.fetchone()
+            
+            if not project:
+                return {
+                    'status': 'error',
+                    'message': 'Project not found'
+                }
+            
+            # Get questions breakdown
+            cursor.execute("""
+                SELECT status, COUNT(*) as count 
+                FROM questions 
+                WHERE project_id = ? 
+                GROUP BY status
+            """, (project_id,))
+            question_stats = {row['status']: row['count'] for row in cursor.fetchall()}
+            
+            # Get answers with source information
+            cursor.execute("""
+                SELECT COUNT(*) as total_answers,
+                       COUNT(CASE WHEN t.transcript_text LIKE 'Additional Document:%' THEN 1 END) as document_answers,
+                       COUNT(CASE WHEN t.transcript_text NOT LIKE 'Additional Document:%' THEN 1 END) as transcript_answers
+                FROM answers a
+                JOIN transcripts t ON a.transcript_id = t.id
+                WHERE t.project_id = ?
+            """, (project_id,))
+            answer_stats = cursor.fetchone()
+            
+            # Get additional document count
+            cursor.execute("""
+                SELECT COUNT(*) as doc_count
+                FROM transcripts 
+                WHERE project_id = ? AND transcript_text LIKE 'Additional Document:%'
+            """, (project_id,))
+            additional_doc_count = cursor.fetchone()['doc_count']
+            
+            conn.close()
+            
+            return {
+                'status': 'success',
+                'project_id': project_id,
+                'project_name': project['name'],
+                'discovery_status': discovery_status,
+                'questions': {
+                    'total': sum(question_stats.values()),
+                    'by_status': question_stats,
+                    'completion_percentage': round(
+                        (question_stats.get('answered', 0) + question_stats.get('partially_answered', 0)) 
+                        / max(sum(question_stats.values()), 1) * 100, 1
+                    )
+                },
+                'answers': {
+                    'total': answer_stats['total_answers'] if answer_stats else 0,
+                    'from_documents': answer_stats['document_answers'] if answer_stats else 0,
+                    'from_transcripts': answer_stats['transcript_answers'] if answer_stats else 0
+                },
+                'additional_documents': {
+                    'count': additional_doc_count
+                },
+                'created_at': project['created_at']
+            }
+            
+        except Exception as e:
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    def get_answers_by_source(self, project_id: int) -> Dict[str, Any]:
+        """
+        Get all answers grouped by their source (transcript vs document)
+        
+        Args:
+            project_id: ID of the project
+            
+        Returns:
+            Dictionary with answers grouped by source type
+        """
+        try:
+            conn = self.db._get_connection()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT q.question, q.context, a.answer_text, a.confidence,
+                       t.transcript_text as source_info, t.meeting_date
+                FROM questions q
+                JOIN answers a ON q.id = a.question_id
+                JOIN transcripts t ON a.transcript_id = t.id
+                WHERE q.project_id = ?
+                ORDER BY t.meeting_date DESC
+            """, (project_id,))
+            
+            all_answers = cursor.fetchall()
+            conn.close()
+            
+            document_answers = []
+            transcript_answers = []
+            
+            for answer in all_answers:
+                answer_data = {
+                    'question': answer['question'],
+                    'context': answer['context'],
+                    'answer': answer['answer_text'],
+                    'confidence': answer['confidence'],
+                    'date': answer['meeting_date']
+                }
+                
+                if answer['source_info'].startswith('Additional Document:'):
+                    answer_data['source'] = answer['source_info']
+                    document_answers.append(answer_data)
+                else:
+                    answer_data['source'] = 'Meeting Transcript'
+                    transcript_answers.append(answer_data)
+            
+            return {
+                'status': 'success',
+                'project_id': project_id,
+                'document_answers': document_answers,
+                'transcript_answers': transcript_answers,
+                'summary': {
+                    'total_answers': len(all_answers),
+                    'document_answers': len(document_answers),
+                    'transcript_answers': len(transcript_answers)
+                }
+            }
+            
         except Exception as e:
             return {
                 'status': 'error',

@@ -1,10 +1,11 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import os
 import shutil
 from fastapi.responses import JSONResponse
 import uvicorn
+import sqlite3
 from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -56,6 +57,21 @@ class HealthResponse(BaseModel):
     status: str
     upload_folder: str
     chroma_path: str
+
+class ProcessAdditionalDocsRequest(BaseModel):
+    project_id: int = Field(..., description="ID of the existing project")
+    document_paths: List[str] = Field(..., description="Paths to additional documents")
+
+class ProcessAdditionalDocsResponse(BaseModel):
+    status: str
+    project_id: int
+    project_name: Optional[str] = None
+    documents_processed: int
+    answers_found: int
+    new_questions_generated: int
+    discovery_status: Optional[Dict] = None
+    processed_documents: List[Dict] = []
+
 
 # New models for Discovery Accelerator
 class ProcessDocumentsRequest(BaseModel):
@@ -368,13 +384,35 @@ async def generate_questions(request: GenerateQuestionsRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/start_discovery")
-async def start_discovery(request: StartDiscoveryRequest):
+async def start_discovery(
+    project_name: str = Form(..., description="Name of the project"),
+    sow_file: UploadFile = File(..., description="SOW document file"),
+    additional_docs: List[UploadFile] = File(None, description="Additional document files")
+):
     """
     Combined endpoint that processes documents and generates questions.
-    
-    This is a compatibility endpoint that maintains the previous behavior.
+
+    Accepts file uploads instead of file paths.
     """
     try:
+        # Ensure project directory exists
+        project_dir = os.path.join(UPLOAD_FOLDER, sanitize_filename(project_name))
+        os.makedirs(project_dir, exist_ok=True)
+
+        # Save SOW file
+        sow_path = os.path.join(project_dir, sow_file.filename)
+        with open(sow_path, "wb") as f:
+            shutil.copyfileobj(sow_file.file, f)
+
+        # Save additional documents
+        additional_docs_paths = []
+        if additional_docs:
+            for doc in additional_docs:
+                doc_path = os.path.join(project_dir, doc.filename)
+                with open(doc_path, "wb") as f:
+                    shutil.copyfileobj(doc.file, f)
+                additional_docs_paths.append(doc_path)
+
         # Initialize discovery accelerator
         accelerator = DiscoveryAccelerator(
             base_dir=UPLOAD_FOLDER,
@@ -382,17 +420,17 @@ async def start_discovery(request: StartDiscoveryRequest):
             gemini_api_key=GEMINI_API_KEY,
             inference_api_url=INFERENCE_API_URL
         )
-        
+
         # Start combined discovery process
         print("Combined discovery process starting...")
         result = accelerator.start_discovery(
-            project_name=request.project_name,
-            sow_path=request.sow_path,
-            additional_docs_paths=request.additional_docs_paths
+            project_name=project_name,
+            sow_path=sow_path,
+            additional_docs_paths=additional_docs_paths if additional_docs_paths else None
         )
-        
+
         return result
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -564,6 +602,314 @@ async def discovery_report(project_id: int):
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/process_additional_documents", response_model=ProcessAdditionalDocsResponse)
+async def process_additional_documents(request: ProcessAdditionalDocsRequest):
+    """
+    Process additional documents for an existing project.
+    
+    This endpoint:
+    1. Extracts content from the new documents
+    2. Attempts to answer existing unanswered questions using document content
+    3. Generates new questions based on document content
+    4. Updates the project's discovery status
+    """
+    try:
+        # Initialize discovery accelerator
+        accelerator = DiscoveryAccelerator(
+            base_dir=UPLOAD_FOLDER,
+            chroma_path=CHROMA_PATH,
+            gemini_api_key=GEMINI_API_KEY,
+            inference_api_url=INFERENCE_API_URL
+        )
+        
+        # Process additional documents
+        print(f"Processing additional documents for project {request.project_id}")
+        result = accelerator.process_additional_documents(
+            project_id=request.project_id,
+            document_paths=request.document_paths
+        )
+        
+        return result
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/upload_additional_documents/{project_id}")
+async def upload_additional_documents(
+    project_id: int,
+    documents: List[UploadFile] = File(..., description="Additional document files to process")
+):
+    """
+    Upload and process additional documents for an existing project.
+    Accepts file uploads instead of file paths.
+    """
+    try:
+        # Initialize discovery accelerator
+        accelerator = DiscoveryAccelerator(
+            base_dir=UPLOAD_FOLDER,
+            chroma_path=CHROMA_PATH,
+            gemini_api_key=GEMINI_API_KEY,
+            inference_api_url=INFERENCE_API_URL
+        )
+
+        # Get project info to determine project directory
+        conn = accelerator.db._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+        project = cursor.fetchone()
+        conn.close()
+
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        project_name = project['name']
+
+        # Create additional documents directory
+        additional_docs_dir = os.path.join(UPLOAD_FOLDER, sanitize_filename(project_name), "additional_documents")
+        os.makedirs(additional_docs_dir, exist_ok=True)
+
+        # Save uploaded documents
+        document_paths = []
+        for doc in documents:
+            doc_path = os.path.join(additional_docs_dir, doc.filename)
+            
+            print(f"Saving document: {doc.filename} to {doc_path}")
+            
+            print(f"File content length for {doc.filename}: {doc.size/(1024*1024)} MB")
+            with open(doc_path, "wb") as f:
+                shutil.copyfileobj(doc.file, f)
+    
+            # Verify the file was written correctly
+            if os.path.exists(doc_path) and os.path.getsize(doc_path) > 0:
+                print(f"Document {doc.filename} saved successfully.")
+                document_paths.append(doc_path)
+            else:
+                print(f"Failed to save document {doc.filename}")
+                raise HTTPException(status_code=500, detail=f"Failed to save document {doc.filename}")
+
+        if not document_paths:
+            raise HTTPException(status_code=400, detail="No valid documents uploaded")
+
+        # Process the additional documents
+        result = accelerator.process_additional_documents(
+            project_id=project_id,
+            document_paths=document_paths
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in upload_additional_documents: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/project_progress/{project_id}")
+async def get_project_progress(project_id: int):
+    """
+    Get comprehensive progress summary for a project including additional documents impact.
+    """
+    try:
+        # Initialize discovery accelerator
+        accelerator = DiscoveryAccelerator(
+            base_dir=UPLOAD_FOLDER,
+            chroma_path=CHROMA_PATH,
+            gemini_api_key=GEMINI_API_KEY,
+            inference_api_url=INFERENCE_API_URL
+        )
+        
+        # Get progress summary
+        progress = accelerator.get_project_progress_summary(project_id)
+        
+        return progress
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/answers_by_source/{project_id}")
+async def get_answers_by_source(project_id: int):
+    """
+    Get all answers grouped by their source (documents vs transcripts).
+    
+    Useful for understanding which sources have been most valuable for answering questions.
+    """
+    try:
+        # Initialize discovery accelerator
+        accelerator = DiscoveryAccelerator(
+            base_dir=UPLOAD_FOLDER,
+            chroma_path=CHROMA_PATH,
+            gemini_api_key=GEMINI_API_KEY,
+            inference_api_url=INFERENCE_API_URL
+        )
+        
+        # Get answers by source
+        answers = accelerator.get_answers_by_source(project_id)
+        
+        return answers
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/unanswered_questions/{project_id}")
+async def get_unanswered_questions(project_id: int):
+    """
+    Get all unanswered questions for a project.
+    
+    Useful for identifying what still needs to be addressed after processing additional documents.
+    """
+    try:
+        # Initialize discovery accelerator
+        accelerator = DiscoveryAccelerator(
+            base_dir=UPLOAD_FOLDER,
+            chroma_path=CHROMA_PATH,
+            gemini_api_key=GEMINI_API_KEY,
+            inference_api_url=INFERENCE_API_URL
+        )
+        
+        # Get unanswered questions
+        questions = accelerator.get_current_questions(project_id, status='unanswered')
+        
+        return {
+            'status': 'success',
+            'project_id': project_id,
+            'unanswered_questions': questions,
+            'count': len(questions)
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/bulk_process_additional_documents")
+async def bulk_process_additional_documents(
+    project_id: int = Form(...),
+    documents: List[UploadFile] = File(...)
+):
+    """
+    Bulk process multiple additional documents at once.
+    
+    This is optimized for processing many documents simultaneously while maintaining
+    performance and avoiding API rate limits.
+    """
+    try:
+        # Initialize discovery accelerator
+        accelerator = DiscoveryAccelerator(
+            base_dir=UPLOAD_FOLDER,
+            chroma_path=CHROMA_PATH,
+            gemini_api_key=GEMINI_API_KEY,
+            inference_api_url=INFERENCE_API_URL
+        )
+        
+        # Validate project exists
+        conn = accelerator.db._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+        project = cursor.fetchone()
+        conn.close()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        project_name = project['name']
+        
+        # Create directory for bulk documents
+        bulk_docs_dir = os.path.join(
+            UPLOAD_FOLDER, 
+            sanitize_filename(project_name), 
+            "bulk_additional_documents",
+            f"batch_{int(time.time())}"
+        )
+        os.makedirs(bulk_docs_dir, exist_ok=True)
+        
+        # Save all documents
+        document_paths = []
+        failed_uploads = []
+        
+        for doc in documents:
+            try:
+                if doc.filename:
+                    doc_path = os.path.join(bulk_docs_dir, sanitize_filename(doc.filename))
+                    with open(doc_path, "wb") as f:
+                        content = doc.read()
+                        f.write(content)
+                    document_paths.append(doc_path)
+                    print(f"Saved bulk document: {doc.filename}")
+            except Exception as upload_error:
+                failed_uploads.append({
+                    'filename': doc.filename,
+                    'error': str(upload_error)
+                })
+                continue
+        
+        if not document_paths:
+            return {
+                'status': 'error',
+                'message': 'No documents could be uploaded successfully',
+                'failed_uploads': failed_uploads
+            }
+        
+        # Process documents in smaller batches to avoid overwhelming the system
+        batch_size = 3  # Process 3 documents at a time
+        all_results = {
+            'documents_processed': 0,
+            'answers_found': 0,
+            'new_questions_generated': 0,
+            'batch_results': []
+        }
+        
+        for i in range(0, len(document_paths), batch_size):
+            batch_paths = document_paths[i:i+batch_size]
+            print(f"Processing batch {i//batch_size + 1}: {len(batch_paths)} documents")
+            
+            try:
+                batch_result = accelerator.process_additional_documents(
+                    project_id=project_id,
+                    document_paths=batch_paths
+                )
+                
+                if batch_result.get('status') == 'success':
+                    all_results['documents_processed'] += batch_result.get('documents_processed', 0)
+                    all_results['answers_found'] += batch_result.get('answers_found', 0)
+                    all_results['new_questions_generated'] += batch_result.get('new_questions_generated', 0)
+                    all_results['batch_results'].append({
+                        'batch_number': i//batch_size + 1,
+                        'documents': [os.path.basename(p) for p in batch_paths],
+                        'result': batch_result
+                    })
+                
+                # Add small delay between batches to avoid API rate limits
+                import time
+                time.sleep(2)
+                
+            except Exception as batch_error:
+                print(f"Error processing batch {i//batch_size + 1}: {str(batch_error)}")
+                all_results['batch_results'].append({
+                    'batch_number': i//batch_size + 1,
+                    'documents': [os.path.basename(p) for p in batch_paths],
+                    'error': str(batch_error)
+                })
+        
+        # Get final discovery status
+        final_status = accelerator.get_project_progress_summary(project_id)
+        
+        return {
+            'status': 'success',
+            'project_id': project_id,
+            'project_name': project_name,
+            'total_documents_uploaded': len(document_paths),
+            'failed_uploads': failed_uploads,
+            'processing_results': all_results,
+            'final_discovery_status': final_status.get('discovery_status', {}),
+            'completion_percentage': final_status.get('questions', {}).get('completion_percentage', 0)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # CLI configuration for running the server
 if __name__ == "__main__":
@@ -571,5 +917,5 @@ if __name__ == "__main__":
     uvicorn.run(
         "project_api:app",
         host="0.0.0.0",
-        port=4000
+        port=4000,
         )

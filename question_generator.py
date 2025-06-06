@@ -1062,7 +1062,7 @@ class QuestionGenerator:
             
             # Process follow-up questions
             followup_questions = result.get('followup_questions', [])
-            followup_questions = refine_questions(followup_questions)
+            followup_questions = self.refine_questions(followup_questions)
             for q in followup_questions:
                 q['parent_question_id'] = question_id
                 q['source'] = original_question.get('source', '')

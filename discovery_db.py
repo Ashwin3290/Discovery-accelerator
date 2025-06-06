@@ -9,6 +9,7 @@ class DiscoveryDatabase:
         """Initialize database connection and create tables if they don't exist"""
         self.db_path = db_path
         self.initialize_db()
+        self.initialize_enhanced_schema()
     
     def initialize_db(self):
         """Create database tables if they don't exist"""
@@ -475,3 +476,282 @@ class DiscoveryDatabase:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def initialize_enhanced_schema(self):
+        """Add new tables to support additional document processing"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(questions)")
+        columns = [column[1] for column in cursor.fetchall()]
+        # Additional Documents table - separate from transcripts for better tracking
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS additional_documents (
+            id INTEGER PRIMARY KEY,
+            project_id INTEGER NOT NULL,
+            original_filename TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_size INTEGER,
+            upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            processed_date TIMESTAMP,
+            processing_status TEXT DEFAULT 'pending',
+            content_extracted TEXT,
+            answers_found INTEGER DEFAULT 0,
+            questions_generated INTEGER DEFAULT 0,
+            requirement_matches INTEGER DEFAULT 0,
+            notes TEXT,
+            FOREIGN KEY (project_id) REFERENCES projects(id)
+        )
+        ''')
+        
+        # Document Answers table - link answers specifically to documents
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS document_answers (
+            id INTEGER PRIMARY KEY,
+            question_id INTEGER NOT NULL,
+            document_id INTEGER NOT NULL,
+            answer_text TEXT,
+            confidence FLOAT DEFAULT 0.0,
+            document_section TEXT,
+            extraction_method TEXT DEFAULT 'gemini',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (question_id) REFERENCES questions(id),
+            FOREIGN KEY (document_id) REFERENCES additional_documents(id)
+        )
+        ''')
+        
+        # Document Questions table - track questions generated from documents
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS document_questions (
+            id INTEGER PRIMARY KEY,
+            question_id INTEGER NOT NULL,
+            source_document_id INTEGER NOT NULL,
+            document_section TEXT,
+            generated_from TEXT,
+            relevance_score FLOAT DEFAULT 0.0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (question_id) REFERENCES questions(id),
+            FOREIGN KEY (source_document_id) REFERENCES additional_documents(id)
+        )
+        ''')
+        
+        # Document Processing Log table - for debugging and tracking
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS document_processing_log (
+            id INTEGER PRIMARY KEY,
+            project_id INTEGER NOT NULL,
+            document_id INTEGER,
+            processing_step TEXT NOT NULL,
+            processing_status TEXT NOT NULL,
+            processing_details TEXT,
+            error_message TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id),
+            FOREIGN KEY (document_id) REFERENCES additional_documents(id)
+        )
+        ''')
+        
+        # Enhanced Questions table - add columns for better tracking
+        # cursor.execute('''
+        # ALTER TABLE questions ADD COLUMN source_type TEXT DEFAULT 'sow'
+        # ''')
+        
+        # cursor.execute('''
+        # ALTER TABLE questions ADD COLUMN source_document_id INTEGER
+        # ''')
+        
+        # cursor.execute('''
+        # ALTER TABLE questions ADD COLUMN confidence_score FLOAT DEFAULT 0.0
+        # ''')
+        
+        conn.commit()
+        conn.close()
+
+    def store_additional_document(self, project_id: int, filename: str, filepath: str, 
+                                file_size: int = 0, notes: str = "") -> int:
+        """Store additional document information"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            """
+            INSERT INTO additional_documents 
+            (project_id, original_filename, file_path, file_size, notes) 
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (project_id, filename, filepath, file_size, notes)
+        )
+        
+        document_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        return document_id
+
+    def update_document_processing_status(self, document_id: int, status: str, 
+                                        answers_found: int = 0, questions_generated: int = 0,
+                                        requirement_matches: int = 0) -> bool:
+        """Update document processing status and results"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute(
+                """
+                UPDATE additional_documents 
+                SET processing_status = ?, processed_date = CURRENT_TIMESTAMP,
+                    answers_found = ?, questions_generated = ?, requirement_matches = ?
+                WHERE id = ?
+                """,
+                (status, answers_found, questions_generated, requirement_matches, document_id)
+            )
+            
+            conn.commit()
+            conn.close()
+            return True
+        
+        except Exception as e:
+            print(f"Error updating document processing status: {str(e)}")
+            conn.close()
+            return False
+
+    def store_document_answer(self, question_id: int, document_id: int, answer_text: str, 
+                            confidence: float = 0.0, document_section: str = "") -> bool:
+        """Store answer extracted from a document"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute(
+                """
+                INSERT INTO document_answers 
+                (question_id, document_id, answer_text, confidence, document_section) 
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (question_id, document_id, answer_text, confidence, document_section)
+            )
+            
+            conn.commit()
+            conn.close()
+            return True
+        
+        except Exception as e:
+            print(f"Error storing document answer: {str(e)}")
+            conn.close()
+            return False
+
+    def get_document_processing_summary(self, project_id: int) -> Dict[str, Any]:
+        """Get summary of all additional document processing for a project"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Get document processing summary
+        cursor.execute(
+            """
+            SELECT 
+                COUNT(*) as total_documents,
+                COUNT(CASE WHEN processing_status = 'completed' THEN 1 END) as completed,
+                COUNT(CASE WHEN processing_status = 'pending' THEN 1 END) as pending,
+                COUNT(CASE WHEN processing_status = 'failed' THEN 1 END) as failed,
+                SUM(answers_found) as total_answers_found,
+                SUM(questions_generated) as total_questions_generated,
+                SUM(requirement_matches) as total_requirement_matches
+            FROM additional_documents 
+            WHERE project_id = ?
+            """,
+            (project_id,)
+        )
+        
+        summary = cursor.fetchone()
+        
+        # Get recent documents
+        cursor.execute(
+            """
+            SELECT original_filename, processing_status, upload_date, 
+                answers_found, questions_generated
+            FROM additional_documents 
+            WHERE project_id = ? 
+            ORDER BY upload_date DESC 
+            LIMIT 10
+            """,
+            (project_id,)
+        )
+        
+        recent_documents = [{key: row[key] for key in row.keys()} for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        return {
+            'project_id': project_id,
+            'summary': {key: summary[key] for key in summary.keys()} if summary else {},
+            'recent_documents': recent_documents
+        }
+
+    def log_processing_step(self, project_id: int, document_id: int, step: str, 
+                        status: str, details: str = "", error: str = "") -> bool:
+        """Log document processing steps for debugging"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute(
+                """
+                INSERT INTO document_processing_log 
+                (project_id, document_id, processing_step, processing_status, 
+                processing_details, error_message) 
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (project_id, document_id, step, status, details, error)
+            )
+            
+            conn.commit()
+            conn.close()
+            return True
+        
+        except Exception as e:
+            print(f"Error logging processing step: {str(e)}")
+            conn.close()
+            return False
+
+    def get_questions_by_source(self, project_id: int) -> Dict[str, List]:
+        """Get questions grouped by their source (SOW, documents, transcripts)"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            """
+            SELECT q.*, ad.original_filename as source_document_name
+            FROM questions q
+            LEFT JOIN additional_documents ad ON q.source_document_id = ad.id
+            WHERE q.project_id = ?
+            ORDER BY q.created_at DESC
+            """,
+            (project_id,)
+        )
+        
+        all_questions = cursor.fetchall()
+        conn.close()
+        
+        # Group questions by source
+        grouped = {
+            'sow_questions': [],
+            'document_questions': [],
+            'transcript_questions': [],
+            'other_questions': []
+        }
+        
+        for q in all_questions:
+            question_data = {key: q[key] for key in q.keys()}
+            
+            source_type = q.get('source_type', 'sow')
+            if source_type == 'sow':
+                grouped['sow_questions'].append(question_data)
+            elif source_type == 'document':
+                grouped['document_questions'].append(question_data)
+            elif source_type == 'transcript':
+                grouped['transcript_questions'].append(question_data)
+            else:
+                grouped['other_questions'].append(question_data)
+        
+        return grouped
