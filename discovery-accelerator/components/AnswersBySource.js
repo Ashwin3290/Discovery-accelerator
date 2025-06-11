@@ -1,3 +1,4 @@
+// components/AnswersBySource.js - Fixed with proper scrolling
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -220,9 +221,11 @@ export default function AnswersBySource({ projectId, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+      {/* 🔧 FIXED: Proper modal structure with flexbox for scrolling */}
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-6xl w-full h-[90vh] flex flex-col">
+        
+        {/* Header - Fixed at top */}
+        <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
           <div>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
               Answers by Source
@@ -239,8 +242,8 @@ export default function AnswersBySource({ projectId, onClose }) {
           </button>
         </div>
 
-        {/* Filters */}
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+        {/* Filters - Fixed below header */}
+        <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
           <div className="flex flex-col sm:flex-row gap-4">
             {/* Search */}
             <div className="relative flex-1">
@@ -279,138 +282,143 @@ export default function AnswersBySource({ projectId, onClose }) {
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {loading ? (
-            <div className="text-center py-12">
-              <Loader2 size={48} className="mx-auto animate-spin text-blue-500" />
-              <p className="mt-4 text-gray-600 dark:text-gray-400">Loading answers...</p>
-            </div>
-          ) : error ? (
-            <div className="text-center py-12">
-              <AlertCircle size={48} className="mx-auto text-red-500" />
-              <p className="mt-4 text-red-600 dark:text-red-400">{error}</p>
-              <button 
-                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                onClick={loadAnswers}
-              >
-                Try Again
-              </button>
-            </div>
-          ) : !answers || answers.summary.total_answers === 0 ? (
-            <div className="text-center py-12">
-              <Eye size={48} className="mx-auto text-gray-400" />
-              <p className="mt-4 text-gray-600 dark:text-gray-400">
-                No answers found for this project yet.
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* Summary */}
-              <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                  <div className="flex items-center">
-                    <Eye size={20} className="text-blue-600 dark:text-blue-400 mr-2" />
-                    <div>
-                      <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                        Total Answers
-                      </p>
-                      <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                        {answers.summary.total_answers}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-                  <div className="flex items-center">
-                    <FileText size={20} className="text-green-600 dark:text-green-400 mr-2" />
-                    <div>
-                      <p className="text-sm font-medium text-green-800 dark:text-green-200">
-                        From Documents
-                      </p>
-                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                        {answers.summary.document_answers}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
-                  <div className="flex items-center">
-                    <Mic size={20} className="text-purple-600 dark:text-purple-400 mr-2" />
-                    <div>
-                      <p className="text-sm font-medium text-purple-800 dark:text-purple-200">
-                        From Transcripts
-                      </p>
-                      <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                        {answers.summary.transcript_answers}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+        {/* 🔧 FIXED: Scrollable content area with proper height calculation */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="p-6">
+            {loading ? (
+              <div className="text-center py-12">
+                <Loader2 size={48} className="mx-auto animate-spin text-blue-500" />
+                <p className="mt-4 text-gray-600 dark:text-gray-400">Loading answers...</p>
               </div>
-
-              {totalFilteredAnswers === 0 ? (
-                <div className="text-center py-8">
-                  <Filter size={48} className="mx-auto text-gray-400" />
-                  <p className="mt-4 text-gray-600 dark:text-gray-400">
-                    No answers match your current filters.
-                  </p>
-                  <button
-                    onClick={() => {
-                      setSearchQuery('');
-                      setSourceFilter('all');
-                      setConfidenceFilter('all');
-                    }}
-                    className="mt-4 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-                  >
-                    Clear Filters
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {/* Document Answers */}
-                  {(sourceFilter === 'all' || sourceFilter === 'documents') && filteredAnswers.document_answers.length > 0 && (
-                    <div>
-                      <div className="flex items-center mb-4">
-                        <FileText size={20} className="text-blue-600 dark:text-blue-400 mr-2" />
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
-                          Document Answers ({filteredAnswers.document_answers.length})
-                        </h3>
-                      </div>
-                      <div className="grid gap-4">
-                        {filteredAnswers.document_answers.map((answer, index) => 
-                          renderAnswerCard(answer, index, 'document')
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Transcript Answers */}
-                  {(sourceFilter === 'all' || sourceFilter === 'transcripts') && filteredAnswers.transcript_answers.length > 0 && (
-                    <div>
-                      <div className="flex items-center mb-4">
-                        <Mic size={20} className="text-green-600 dark:text-green-400 mr-2" />
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
-                          Transcript Answers ({filteredAnswers.transcript_answers.length})
-                        </h3>
-                      </div>
-                      <div className="grid gap-4">
-                        {filteredAnswers.transcript_answers.map((answer, index) => 
-                          renderAnswerCard(answer, index, 'transcript')
-                        )}
+            ) : error ? (
+              <div className="text-center py-12">
+                <AlertCircle size={48} className="mx-auto text-red-500" />
+                <p className="mt-4 text-red-600 dark:text-red-400">{error}</p>
+                <button 
+                  className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                  onClick={loadAnswers}
+                >
+                  Try Again
+                </button>
+              </div>
+            ) : !answers || answers.summary.total_answers === 0 ? (
+              <div className="text-center py-12">
+                <Eye size={48} className="mx-auto text-gray-400" />
+                <p className="mt-4 text-gray-600 dark:text-gray-400">
+                  No answers found for this project yet.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Summary */}
+                <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                    <div className="flex items-center">
+                      <Eye size={20} className="text-blue-600 dark:text-blue-400 mr-2" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                          Total Answers
+                        </p>
+                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                          {answers.summary.total_answers}
+                        </p>
                       </div>
                     </div>
-                  )}
+                  </div>
+                  
+                  <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+                    <div className="flex items-center">
+                      <FileText size={20} className="text-green-600 dark:text-green-400 mr-2" />
+                      <div>
+                        <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                          From Documents
+                        </p>
+                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                          {answers.summary.document_answers}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
+                    <div className="flex items-center">
+                      <Mic size={20} className="text-purple-600 dark:text-purple-400 mr-2" />
+                      <div>
+                        <p className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                          From Transcripts
+                        </p>
+                        <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                          {answers.summary.transcript_answers}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </>
-          )}
+
+                {totalFilteredAnswers === 0 ? (
+                  <div className="text-center py-8">
+                    <Filter size={48} className="mx-auto text-gray-400" />
+                    <p className="mt-4 text-gray-600 dark:text-gray-400">
+                      No answers match your current filters.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setSearchQuery('');
+                        setSourceFilter('all');
+                        setConfidenceFilter('all');
+                      }}
+                      className="mt-4 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                    >
+                      Clear Filters
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Document Answers */}
+                    {(sourceFilter === 'all' || sourceFilter === 'documents') && filteredAnswers.document_answers.length > 0 && (
+                      <div>
+                        <div className="flex items-center mb-4">
+                          <FileText size={20} className="text-blue-600 dark:text-blue-400 mr-2" />
+                          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+                            Document Answers ({filteredAnswers.document_answers.length})
+                          </h3>
+                        </div>
+                        <div className="grid gap-4">
+                          {filteredAnswers.document_answers.map((answer, index) => 
+                            renderAnswerCard(answer, index, 'document')
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Transcript Answers */}
+                    {(sourceFilter === 'all' || sourceFilter === 'transcripts') && filteredAnswers.transcript_answers.length > 0 && (
+                      <div>
+                        <div className="flex items-center mb-4">
+                          <Mic size={20} className="text-green-600 dark:text-green-400 mr-2" />
+                          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+                            Transcript Answers ({filteredAnswers.transcript_answers.length})
+                          </h3>
+                        </div>
+                        <div className="grid gap-4">
+                          {filteredAnswers.transcript_answers.map((answer, index) => 
+                            renderAnswerCard(answer, index, 'transcript')
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 🔧 FIXED: Extra padding at bottom for better scrolling */}
+                    <div className="h-4"></div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+        {/* Footer - Fixed at bottom */}
+        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800">
           <div className="text-sm text-gray-600 dark:text-gray-400">
             {totalFilteredAnswers > 0 ? (
               `Showing ${totalFilteredAnswers} of ${answers?.summary.total_answers || 0} answers`

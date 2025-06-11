@@ -1,20 +1,26 @@
-// page.js
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import ColoredHeader from '../../components/ColoredHeader';
 import StylableContainer from '../../components/StylableContainer';
 import ProjectSelector from '../../components/ProjectSelector';
 import MetricCard from '../../components/MetricCard';
 import ProgressChart from '../../components/ProgressChart';
-import { processTranscript } from '../../lib/api';
+import { processTranscript, fetchProjects } from '../../lib/api';
 import { readTextFile } from '../../lib/fileUtils';
 
 export default function ProcessTranscriptsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Project state
+  const [projects, setProjects] = useState([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
+  
+  // Form state
   const [inputMethod, setInputMethod] = useState('upload');
   const [transcriptFile, setTranscriptFile] = useState(null);
   const [transcriptText, setTranscriptText] = useState('');
@@ -22,9 +28,55 @@ export default function ProcessTranscriptsPage() {
   const [processingResult, setProcessingResult] = useState(null);
   const [error, setError] = useState(null);
 
-  const handleProjectSelect = (projectName, projectId) => {
-    setSelectedProject(projectName);
+  // Load projects on mount
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  const loadProjects = async () => {
+    try {
+      setProjectsLoading(true);
+      setError(null);
+      
+      const response = await fetchProjects();
+      if (response && response.status === 'success') {
+        const enhancedProjects = response.projects.map((project, index) => {
+          let id = index + 1;
+          const idMatch = project.match(/[^a-zA-Z0-9](\d+)$/);
+          if (idMatch) {
+            id = parseInt(idMatch[1]);
+          }
+          return { id: id, name: project };
+        });
+        setProjects(enhancedProjects);
+
+        // Set initial project if provided in URL
+        const initialProjectId = searchParams.get('projectId');
+        if (initialProjectId) {
+          const project = enhancedProjects.find(p => p.id === parseInt(initialProjectId));
+          if (project) {
+            setSelectedProject(project.name);
+            setSelectedProjectId(project.id);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error loading projects:', err);
+      setError('Failed to load projects. Please try again later.');
+    } finally {
+      setProjectsLoading(false);
+    }
+  };
+
+  const handleProjectSelect = (projectId) => {
+    const project = projects.find(p => p.id === projectId);
+    setSelectedProject(project?.name);
     setSelectedProjectId(projectId);
+
+    // Update URL
+    const url = new URL(window.location);
+    url.searchParams.set('projectId', projectId.toString());
+    window.history.pushState({}, '', url);
   };
 
   const handleInputMethodChange = (method) => {
@@ -73,7 +125,7 @@ export default function ProcessTranscriptsPage() {
       return;
     }
 
-    const text = inputMethod === 'upload' ? transcriptText : transcriptText;
+    const text = transcriptText; // Fixed: removed redundant conditional
     
     if (!text || !text.trim()) {
       setError('Transcript content is empty');
@@ -109,9 +161,38 @@ export default function ProcessTranscriptsPage() {
 
       <StylableContainer>
         {/* Project selector */}
-        <ProjectSelector onSelectProject={handleProjectSelect} />
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Select Project
+          </label>
+          <ProjectSelector 
+            projects={projects}
+            selectedProjectId={selectedProjectId}
+            onProjectSelect={handleProjectSelect}
+            loading={projectsLoading}
+            placeholder="Select a project..."
+          />
+          {error && !selectedProject && (
+            <div className="mt-2 p-3 rounded-md bg-red-50 text-red-700 border border-red-200">
+              {error}
+              <button 
+                onClick={loadProjects}
+                className="ml-2 text-red-800 underline hover:no-underline"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+        </div>
 
-        {selectedProject && (
+        {projectsLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-500"></div>
+              <p className="mt-2 text-gray-500">Loading projects...</p>
+            </div>
+          </div>
+        ) : selectedProject ? (
           <>
             {/* Transcript input method selection */}
             <div className="mb-4">
@@ -305,6 +386,22 @@ export default function ProcessTranscriptsPage() {
               </div>
             )}
           </>
+        ) : !selectedProject && !projectsLoading && projects.length > 0 ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <div className="text-6xl mb-4">📄</div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Select a Project
+              </h3>
+              <p className="text-gray-600">Choose a project from the dropdown above to process transcripts.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <p className="text-gray-600">No projects available or failed to load projects.</p>
+            </div>
+          </div>
         )}
       </StylableContainer>
     </div>

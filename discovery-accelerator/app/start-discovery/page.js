@@ -298,7 +298,7 @@ export default function StartDiscoveryPage() {
         projectName,
         sowFile,
         additionalFiles,
-        true // Generate questions immediately
+        false
       );
       
       if (!result.success) {

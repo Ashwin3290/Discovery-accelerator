@@ -89,24 +89,24 @@ class DiscoveryAccelerator:
             print(f"Project directory created at: {project_dir}")
             
             # Copy and process documents
-            print(f"Step 5: Copying documents to project directory...")
-            for i, doc_path in enumerate(doc_paths):
-                try:
-                    if os.path.exists(doc_path):
-                        filename = os.path.basename(doc_path)
-                        dest_path = os.path.join(project_dir, filename)
-                        print(f"Copying document {i+1}/{len(doc_paths)}: {filename}")
+            # print(f"Step 5: Copying documents to project directory...")
+            # for i, doc_path in enumerate(doc_paths):
+            #     try:
+            #         if os.path.exists(doc_path):
+            #             filename = os.path.basename(doc_path)
+            #             dest_path = os.path.join(project_dir, filename)
+            #             print(f"Copying document {i+1}/{len(doc_paths)}: {filename}")
                         
-                        # Simple file copy
-                        with open(doc_path, 'rb') as src_file:
-                            with open(dest_path, 'wb') as dst_file:
-                                dst_file.write(src_file.read())
-                        print(f"Document copied successfully")
-                    else:
-                        print(f"WARNING: Document not found: {doc_path}")
-                except Exception as copy_error:
-                    print(f"ERROR: Failed to copy document {doc_path}: {str(copy_error)}")
-                    traceback.print_exc()
+            #             # Simple file copy
+            #             with open(doc_path, 'rb') as src_file:
+            #                 with open(dest_path, 'wb') as dst_file:
+            #                     dst_file.write(src_file.read())
+            #             print(f"Document copied successfully")
+            #         else:
+            #             print(f"WARNING: Document not found: {doc_path}")
+            #     except Exception as copy_error:
+            #         print(f"ERROR: Failed to copy document {doc_path}: {str(copy_error)}")
+            #         traceback.print_exc()
             
             # NEW: Process documents and collect requirement matches
             print(f"\nStep 6: Processing documents to create embeddings and match requirements at {time.strftime('%Y-%m-%d %H:%M:%S')}...")
@@ -526,36 +526,11 @@ class DiscoveryAccelerator:
             
             # Copy documents to project directory for processing
             project_dir = os.path.join(self.base_dir, project_name)
-            additional_docs_dir = os.path.join(project_dir, "additional_documents")
-            os.makedirs(additional_docs_dir, exist_ok=True)
-            
-            copied_paths = []
-            for doc_path in valid_paths:
-                filename = os.path.basename(doc_path)
-                dest_path = os.path.join(additional_docs_dir, filename)
-                
-                # Copy file
-                try:
-                    with open(doc_path, 'rb') as src_file:
-                        with open(dest_path, 'wb') as dst_file:
-                            dst_file.write(src_file.read())
-                    copied_paths.append(dest_path)
-                    print(f"Copied document to: {dest_path}")
-                except Exception as copy_error:
-                    print(f"ERROR: Failed to copy document {doc_path}: {str(copy_error)}")
-                    continue
-            
-            if not copied_paths:
-                return {
-                    'status': 'error',
-                    'message': 'Failed to copy any documents for processing'
-                }
             
             # Process the additional documents
-            print(f"Processing {len(copied_paths)} additional documents...")
             result = self.additional_doc_processor.process_additional_documents(
                 project_id=project_id,
-                document_paths=copied_paths
+                document_paths=valid_paths
             )
             
             # Add project name to result

@@ -237,16 +237,6 @@ export default function AdditionalDocumentUpload({
         <div className="px-6 py-4 max-h-[60vh] overflow-y-auto">
           {!processed && (
             <>
-              {/* Debug Test Button - REMOVE IN PRODUCTION */}
-              <div className="mb-4">
-                <button
-                  onClick={testFileUpload}
-                  className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-md text-sm"
-                >
-                  🔧 Test with Dummy File (Debug)
-                </button>
-              </div>
-
               {/* File Upload Area */}
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

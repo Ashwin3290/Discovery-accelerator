@@ -584,7 +584,6 @@ class ProjectDataPipeline:
             finally:
                 self.clear_memory()
         
-        print(documents)
         self.clear_memory()
         import json
         with open("documents.json", "w") as f:
@@ -727,7 +726,7 @@ class ProjectDataPipeline:
                         pdf_path, 
                         self.gemini_api_key, 
                         sow_data,
-                        max_pages_per_chunk=10  # You can make this configurable
+                        max_pages_per_chunk=30
                     )
                     
                     # NEW: Match requirements to document content

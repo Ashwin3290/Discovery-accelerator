@@ -324,7 +324,9 @@ async def health_check():
 # New endpoints for Discovery Accelerator
 
 @app.post("/process_documents")
-async def process_documents(request: ProcessDocumentsRequest):
+async def process_documents(    project_name: str = Form(..., description="Name of the project"),
+    sow_file: UploadFile = File(..., description="SOW document file"),
+    additional_docs: List[UploadFile] = File(None, description="Additional document files")):
     """
     Process documents without generating questions.
     
@@ -339,13 +341,29 @@ async def process_documents(request: ProcessDocumentsRequest):
             gemini_api_key=GEMINI_API_KEY,
             inference_api_url=INFERENCE_API_URL
         )
-        
+        # Ensure project directory exists
+        project_dir = os.path.join(UPLOAD_FOLDER, sanitize_filename(project_name))
+        os.makedirs(project_dir, exist_ok=True)
+
+        # Save SOW file
+        sow_path = os.path.join(project_dir, sow_file.filename)
+        with open(sow_path, "wb") as f:
+            shutil.copyfileobj(sow_file.file, f)
+
+        # Save additional documents
+        additional_docs_paths = []
+        if additional_docs:
+            for doc in additional_docs:
+                doc_path = os.path.join(project_dir, doc.filename)
+                with open(doc_path, "wb") as f:
+                    shutil.copyfileobj(doc.file, f)
+                additional_docs_paths.append(doc_path)
         # Process documents
         print("Document processing starting...")
         result = accelerator.process_documents(
-            project_name=request.project_name,
-            sow_path=request.sow_path,
-            additional_docs_paths=request.additional_docs_paths
+            project_name=project_name,
+            sow_path=sow_path,
+            additional_docs_paths=additional_docs_paths if additional_docs_paths else None
         )
         print("Document processing completed.")
         return result
@@ -673,14 +691,10 @@ async def upload_additional_documents(
         # Save uploaded documents
         document_paths = []
         for doc in documents:
+            content= await doc.read()
             doc_path = os.path.join(additional_docs_dir, doc.filename)
-            
-            print(f"Saving document: {doc.filename} to {doc_path}")
-            
-            print(f"File content length for {doc.filename}: {doc.size/(1024*1024)} MB")
             with open(doc_path, "wb") as f:
-                shutil.copyfileobj(doc.file, f)
-    
+                f.write(content)
             # Verify the file was written correctly
             if os.path.exists(doc_path) and os.path.getsize(doc_path) > 0:
                 print(f"Document {doc.filename} saved successfully.")
@@ -688,7 +702,8 @@ async def upload_additional_documents(
             else:
                 print(f"Failed to save document {doc.filename}")
                 raise HTTPException(status_code=500, detail=f"Failed to save document {doc.filename}")
-
+        
+            doc.file.close()
         if not document_paths:
             raise HTTPException(status_code=400, detail="No valid documents uploaded")
 
